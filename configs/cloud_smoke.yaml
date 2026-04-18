@@ -1,49 +1,60 @@
 version: cloud_smoke
+
 enabled_subtypes:
   - cat
   - cnt
   - col
   - rel
+
 pair_limits:
-  per_subtype: 512
+  per_subtype: 100000
+
 input_paths:
   shell_bank: data/outputs/shell_bank_v1.json
-  cat_neg_bank: data/outputs/cat_neg_bank_v2.json
+  cat_neg_bank: data/outputs/cat_neg_bank_v1.json
   fact_index: data/outputs/fact_index_v0.jsonl
   atomic_facts: data/outputs/atomic_facts_v0.jsonl
+
 output_paths:
   pairs_unbalanced: data/outputs/pairs_unbalanced_v0.jsonl
   pairs_balanced: data/outputs/pairs_balanced_v0.jsonl
   pair_stats: data/outputs/pair_stats_v0.json
+
 output_path: data/outputs/pairs_balanced_v0.jsonl
+
 targets:
-  cat: 32
-  cnt: 32
-  col: 16
-  rel: 32
+  cat: 500
+  cnt: 500
+  col: 200
+  rel: 500
+
 caps:
-  per_label_cap: 8
-  per_rel_pattern_cap: 8
+  per_label_cap: 50
+  per_rel_pattern_cap: 50
+
 sampling:
-  max_cat_anchors_per_image: 2
-  max_cnt_anchors_per_image: 2
-  max_col_anchors_per_image: 2
-  max_rel_pairs_per_image: 2
+  max_cat_anchors_per_image: 20
+  max_cnt_anchors_per_image: 20
+  max_col_anchors_per_image: 20
+  max_rel_pairs_per_image: 20
+
 coco:
-  instances_json: data/mock/mock_coco_instances.json
-  panoptic_json: data/mock/mock_coco_panoptic.json
-  panoptic_root: data/mock/panoptic
-  image_root: data/mock/images
-  use_panoptic: true
-  use_images_for_color: true
+  instances_json: /home/huiwei/sy/sy_data/COCO2017/annotations/instances_train2017.json
+  panoptic_json: ""
+  panoptic_root: ""
+  image_root: ""
+  use_panoptic: false
+  use_images_for_color: false
   thing_only: true
-  max_images: 5
+  max_images: 50
   sample_images_randomly: false
   random_seed: 42
+
 run:
   log_every: 20
   save_every: 100
   resume: false
+
 filters:
   object_min_area_ratio: 0.01
   rel_min_abs_dx: 0.75
