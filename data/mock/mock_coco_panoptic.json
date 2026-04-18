@@ -1,0 +1,70 @@
+{
+  "annotations": [
+    {
+      "image_id": 101,
+      "file_name": "mock_panoptic_101.png",
+      "segments_info": [
+        {
+          "id": 1,
+          "category_id": 1,
+          "area": 4,
+          "bbox": [10, 20, 20, 20]
+        },
+        {
+          "id": 2,
+          "category_id": 1,
+          "area": 4,
+          "bbox": [35, 20, 20, 20]
+        },
+        {
+          "id": 3,
+          "category_id": 2,
+          "area": 8,
+          "bbox": [70, 20, 20, 20]
+        }
+      ]
+    },
+    {
+      "image_id": 102,
+      "file_name": "mock_panoptic_102.png",
+      "segments_info": [
+        {
+          "id": 4,
+          "category_id": 1,
+          "area": 8,
+          "bbox": [45, 10, 20, 20]
+        },
+        {
+          "id": 5,
+          "category_id": 2,
+          "area": 4,
+          "bbox": [45, 55, 20, 20]
+        },
+        {
+          "id": 6,
+          "category_id": 3,
+          "area": 4,
+          "bbox": [10, 55, 15, 15]
+        }
+      ]
+    }
+  ],
+  "categories": [
+    {
+      "id": 1,
+      "name": "cat",
+      "supercategory": "animal"
+    },
+    {
+      "id": 2,
+      "name": "dog",
+      "supercategory": "animal"
+    },
+    {
+      "id": 3,
+      "name": "ball",
+      "supercategory": "sports"
+    }
+  ]
+}
+

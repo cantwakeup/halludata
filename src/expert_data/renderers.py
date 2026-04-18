@@ -8,7 +8,7 @@ from expert_data.negatives import get_cat_negative_candidates
 from expert_data.schemas import FactRecord, PairRecord
 from expert_data.shells import get_shell_templates
 
-DEFAULT_COLOR_NEGATIVES = ["black", "white", "orange", "brown", "gray"]
+DEFAULT_COLOR_NEGATIVES = ["black", "white", "red", "yellow", "green", "blue", "brown", "orange"]
 VALID_REL_PREDICATES = {"left of", "right of", "above", "below"}
 RELATION_NEGATIVE_MAP = {
     "left of": "right of",

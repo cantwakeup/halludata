@@ -15,7 +15,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from expert_data.coco_io import load_coco_instances, load_coco_panoptic
-from expert_data.colors import estimate_dominant_color, extract_mask_pixels_from_panoptic
+from expert_data.colors import estimate_annotation_colors_for_image
 from expert_data.facts import (
     build_atomic_facts_for_image,
     build_counts_for_image,
@@ -97,57 +97,6 @@ def _build_fact_index_record_for_image(
         "relations": [relation.to_dict() for relation in relations],
         "meta": {"source": "coco_instance"},
     }
-
-
-def _build_dominant_color_lookup_for_image(
-    image_info: Mapping[str, Any],
-    annotations: list[dict[str, Any]],
-    panoptic_annotation: Mapping[str, Any] | None,
-    panoptic_root: Path | None,
-    image_root: Path | None,
-) -> dict[int, str | None]:
-    """Estimate dominant colors for image objects when panoptic masks and RGB images are available."""
-
-    if panoptic_annotation is None or panoptic_root is None or image_root is None:
-        return {}
-
-    panoptic_file_name = panoptic_annotation.get("file_name")
-    image_file_name = image_info.get("file_name")
-    if panoptic_file_name is None or image_file_name is None:
-        return {}
-
-    segments_info = panoptic_annotation.get("segments_info", [])
-    if not isinstance(segments_info, list):
-        return {}
-
-    panoptic_mask_path = panoptic_root / str(panoptic_file_name)
-    image_path = image_root / str(image_file_name)
-    if not panoptic_mask_path.exists() or not image_path.exists():
-        return {}
-
-    lookup: dict[int, str | None] = {}
-    for annotation in annotations:
-        annotation_id = int(annotation["id"])
-        segment_id = annotation.get("segment_id")
-        if segment_id is None:
-            same_category_segments = [
-                segment
-                for segment in segments_info
-                if int(segment.get("category_id", -1)) == int(annotation.get("category_id", -2))
-            ]
-            if len(same_category_segments) == 1:
-                segment_id = same_category_segments[0].get("id")
-        if segment_id is None:
-            lookup[annotation_id] = None
-            continue
-
-        pixels = extract_mask_pixels_from_panoptic(
-            panoptic_mask_path=panoptic_mask_path,
-            image_path=image_path,
-            segment_id=int(segment_id),
-        )
-        lookup[annotation_id] = estimate_dominant_color(pixels)
-    return lookup
 
 
 def _select_image_ids(
@@ -254,13 +203,16 @@ def build_coco_fact_outputs(
         annotations = annotations_by_image.get(image_id, [])
         dominant_colors_by_annotation_id: dict[int, str | None] = {}
         if use_images_for_color:
-            dominant_colors_by_annotation_id = _build_dominant_color_lookup_for_image(
-                image_info=image_info,
-                annotations=annotations,
-                panoptic_annotation=panoptic_annotations_by_image.get(image_id),
-                panoptic_root=panoptic_root,
-                image_root=image_root,
-            )
+            try:
+                dominant_colors_by_annotation_id, _ = estimate_annotation_colors_for_image(
+                    image_info=image_info,
+                    annotations=annotations,
+                    panoptic_annotation=panoptic_annotations_by_image.get(image_id),
+                    panoptic_root=panoptic_root,
+                    image_root=image_root,
+                )
+            except Exception:
+                dominant_colors_by_annotation_id = {}
 
         objects = build_objects_for_image(
             image_info=image_info,

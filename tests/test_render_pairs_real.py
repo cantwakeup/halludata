@@ -10,6 +10,13 @@ import unittest
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SRC_ROOT = PROJECT_ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
+from expert_data.sampling import apply_sampling_caps
+from expert_data.schemas import FactRecord, ObjectInfo
+
 FACT_INDEX_PATH = PROJECT_ROOT / "data" / "outputs" / "fact_index_v0.jsonl"
 UNBALANCED_PATH = PROJECT_ROOT / "data" / "outputs" / "pairs_unbalanced_v0.jsonl"
 BALANCED_PATH = PROJECT_ROOT / "data" / "outputs" / "pairs_balanced_v0.jsonl"
@@ -39,11 +46,11 @@ def load_jsonl(path: Path) -> list[dict[str, object]]:
 class RenderPairsRealTest(unittest.TestCase):
     """Validate pair rendering against the real resource-layer outputs."""
 
-    def _run_script(self, relative_path: str) -> None:
+    def _run_script(self, *argv: str) -> None:
         """Execute a project script and fail with captured output if it errors."""
 
         result = subprocess.run(
-            [sys.executable, relative_path],
+            [sys.executable, *argv],
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
@@ -52,7 +59,7 @@ class RenderPairsRealTest(unittest.TestCase):
         self.assertEqual(
             result.returncode,
             0,
-            msg=f"{relative_path} failed.\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}",
+            msg=f"{' '.join(argv)} failed.\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}",
         )
 
     def test_render_pairs_from_real_resources(self) -> None:
@@ -60,8 +67,8 @@ class RenderPairsRealTest(unittest.TestCase):
 
         self._run_script("scripts/build_shell_bank.py")
         self._run_script("scripts/build_cat_neg_bank.py")
-        self._run_script("scripts/build_coco_fact_index.py")
-        self._run_script("scripts/render_pairs.py")
+        self._run_script("scripts/build_coco_fact_index.py", "--config", "configs/cloud_smoke.yaml")
+        self._run_script("scripts/render_pairs.py", "--config", "configs/cloud_smoke.yaml")
 
         self.assertTrue(UNBALANCED_PATH.exists())
         self.assertTrue(BALANCED_PATH.exists())
@@ -77,8 +84,8 @@ class RenderPairsRealTest(unittest.TestCase):
         balanced_pairs = load_jsonl(BALANCED_PATH)
         pair_stats = load_json(STATS_PATH)
 
-        self.assertTrue({"cat", "cnt", "rel"}.issubset({pair["subtype"] for pair in unbalanced_pairs}))
-        self.assertTrue({"cat", "cnt", "rel"}.issubset({pair["subtype"] for pair in balanced_pairs}))
+        self.assertTrue({"cat", "cnt", "col", "rel"}.issubset({pair["subtype"] for pair in unbalanced_pairs}))
+        self.assertTrue({"cat", "cnt", "col", "rel"}.issubset({pair["subtype"] for pair in balanced_pairs}))
 
         cat_pair = next(
             (
@@ -121,12 +128,52 @@ class RenderPairsRealTest(unittest.TestCase):
         self.assertNotIn("coco_101_rel_1", rendered_fact_ids, msg="Same-category relation should be filtered")
         self.assertNotIn("coco_101_cat_1", rendered_fact_ids, msg="Non-unique cat anchor should be filtered")
         self.assertNotIn("coco_101_cat_2", rendered_fact_ids, msg="Non-unique cat anchor should be filtered")
-        self.assertFalse(any(pair["subtype"] == "col" for pair in unbalanced_pairs))
+        self.assertNotIn("coco_101_col_3", rendered_fact_ids, msg="Missing-color anchor should be filtered")
+
+        col_pair = next((pair for pair in unbalanced_pairs if pair["subtype"] == "col"), None)
+        self.assertIsNotNone(col_pair, msg="Expected at least one color pair after wiring the color pipeline")
+        self.assertNotEqual(col_pair["response_pos"], col_pair["response_neg"])
 
         dropped_by_reason = pair_stats["dropped_by_reason"]
         self.assertGreater(dropped_by_reason.get("same_category_relation", 0), 0)
         self.assertGreater(dropped_by_reason.get("ambiguous_cat_anchor", 0), 0)
         self.assertGreater(dropped_by_reason.get("missing_color", 0), 0)
+        self.assertIn("counts_after_sampling_caps", pair_stats)
+        self.assertIn("capped_cat_per_image", dropped_by_reason)
+        self.assertIn("per_image_pair_counts", pair_stats)
+
+    def test_sampling_caps_apply_before_rendering(self) -> None:
+        """Per-image caps should trim same-image anchors before rendering expands them into pairs."""
+
+        facts = [
+            FactRecord(
+                fact_id=f"cap_cat_{index}",
+                image_id="img_cap",
+                subtype="cat",
+                subject=ObjectInfo(
+                    object_id=f"img_cap_{index}",
+                    name="dog",
+                    category="dog",
+                    color=None,
+                    aliases=[],
+                ),
+                positive_value="dog",
+                meta={"area_ratio": 0.2},
+            )
+            for index in range(3)
+        ]
+        sampled_facts, kept_counts, dropped = apply_sampling_caps(
+            facts,
+            {
+                "max_cat_anchors_per_image": 1,
+                "max_cnt_anchors_per_image": 1,
+                "max_col_anchors_per_image": 1,
+                "max_rel_pairs_per_image": 1,
+            },
+        )
+        self.assertEqual(len(sampled_facts), 1)
+        self.assertEqual(kept_counts["cat"], 1)
+        self.assertEqual(dropped["capped_cat_per_image"], 2)
 
 
 if __name__ == "__main__":

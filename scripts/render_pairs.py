@@ -13,7 +13,7 @@ SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from expert_data.io_utils import load_fact_records, read_json, read_jsonl, read_yaml, write_json, write_jsonl
+from expert_data.io_utils import load_fact_records, read_jsonl, read_yaml, write_json, write_jsonl
 from expert_data.negatives import load_cat_neg_bank
 from expert_data.renderers import (
     VALID_REL_PREDICATES,
@@ -26,16 +26,22 @@ from expert_data.renderers import (
     render_rel_pairs,
     select_cat_negative,
 )
+from expert_data.sampling import CAP_DROP_REASON_BY_SUBTYPE, apply_sampling_caps
 from expert_data.schemas import FactRecord, PairRecord
 from expert_data.shells import load_shell_bank
 
 DROPPED_REASONS = (
     "ambiguous_cat_anchor",
+    "ambiguous_col_anchor",
     "missing_color",
     "ambiguous_rel_anchor",
     "same_category_relation",
     "count_out_of_range",
     "no_valid_negative",
+    "capped_cat_per_image",
+    "capped_cnt_per_image",
+    "capped_col_per_image",
+    "capped_rel_per_image",
 )
 
 
@@ -161,7 +167,7 @@ def filter_atomic_facts(
                 drop_reason = "count_out_of_range"
         elif fact.subtype == "col":
             if int(image_counts.get(fact.subject.category, 0)) != 1:
-                drop_reason = "ambiguous_cat_anchor"
+                drop_reason = "ambiguous_col_anchor"
             elif fact.positive_value in {None, ""}:
                 drop_reason = "missing_color"
             elif generate_color_negative(fact.positive_value) is None:
@@ -194,30 +200,6 @@ def filter_atomic_facts(
         _counter_to_dict(after_counter, enabled_subtypes),
         {reason: int(dropped_counter.get(reason, 0)) for reason in DROPPED_REASONS},
     )
-
-
-def apply_sampling_caps(
-    facts: list[FactRecord],
-    sampling_cfg: Mapping[str, Any],
-) -> list[FactRecord]:
-    """Apply per-image anchor caps before rendering unbalanced pairs."""
-
-    limits = {
-        "cat": int(sampling_cfg.get("max_cat_anchors_per_image", 1_000_000)),
-        "cnt": int(sampling_cfg.get("max_cnt_anchors_per_image", 1_000_000)),
-        "col": int(sampling_cfg.get("max_col_anchors_per_image", 1_000_000)),
-        "rel": int(sampling_cfg.get("max_rel_pairs_per_image", 1_000_000)),
-    }
-    counts_by_key: dict[tuple[str, str], int] = defaultdict(int)
-    selected_facts: list[FactRecord] = []
-
-    for fact in facts:
-        key = (fact.subtype, fact.image_id)
-        if counts_by_key[key] >= limits.get(fact.subtype, 1_000_000):
-            continue
-        counts_by_key[key] += 1
-        selected_facts.append(fact)
-    return selected_facts
 
 
 def render_unbalanced_pairs(
@@ -371,6 +353,7 @@ def build_pair_stats(
     enabled_subtypes: list[str],
     counts_before_filter: dict[str, int],
     counts_after_filter: dict[str, int],
+    counts_after_sampling_caps: dict[str, int],
     dropped_by_reason: Mapping[str, int],
     unbalanced_pairs: list[PairRecord],
     balanced_pairs: list[PairRecord],
@@ -380,6 +363,7 @@ def build_pair_stats(
     return {
         "counts_before_filter": counts_before_filter,
         "counts_after_filter": counts_after_filter,
+        "counts_after_sampling_caps": counts_after_sampling_caps,
         "counts_unbalanced": _count_pairs_by_subtype(unbalanced_pairs, enabled_subtypes),
         "counts_balanced": _count_pairs_by_subtype(balanced_pairs, enabled_subtypes),
         "dropped_by_reason": {reason: int(dropped_by_reason.get(reason, 0)) for reason in DROPPED_REASONS},
@@ -478,12 +462,21 @@ def render_pairs_from_config(
         filters_cfg=filters_cfg,
         cat_neg_bank=cat_neg_bank,
     )
+    sampled_facts, counts_after_sampling_caps, capped_drops = apply_sampling_caps(
+        filtered_facts,
+        sampling_cfg=sampling_cfg,
+    )
+    dropped_by_reason.update(
+        {
+            reason: int(dropped_by_reason.get(reason, 0)) + int(capped_drops.get(reason, 0))
+            for reason in CAP_DROP_REASON_BY_SUBTYPE.values()
+        }
+    )
 
     if getattr(cli_args, "stats_only", False):
         unbalanced_pairs = _load_pair_rows(output_unbalanced_path) if output_unbalanced_path.exists() else []
         balanced_pairs = _load_pair_rows(output_balanced_path) if output_balanced_path.exists() else []
     else:
-        sampled_facts = apply_sampling_caps(filtered_facts, sampling_cfg=sampling_cfg)
         unbalanced_pairs = render_unbalanced_pairs(
             sampled_facts,
             shell_bank=shell_bank,
@@ -503,6 +496,7 @@ def render_pairs_from_config(
         enabled_subtypes=enabled_subtypes,
         counts_before_filter=counts_before_filter,
         counts_after_filter=counts_after_filter,
+        counts_after_sampling_caps=counts_after_sampling_caps,
         dropped_by_reason=dropped_by_reason,
         unbalanced_pairs=unbalanced_pairs,
         balanced_pairs=balanced_pairs,

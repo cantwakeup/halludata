@@ -37,3 +37,9 @@ data/external/
 *.zip
 *.tar
 *.gz
+
+# Keep tiny mock image assets that are needed for local color smoke tests
+!data/mock/images/
+!data/mock/images/*.jpg
+!data/mock/panoptic/
+!data/mock/panoptic/*.png

@@ -1,4 +1,4 @@
-"""Build the deterministic category hard-negative resource used by the mock pipeline."""
+"""Build the deterministic COCO-scale category hard-negative resource."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from expert_data.io_utils import write_json
-from expert_data.negatives import build_manual_seed_cat_neg_bank
+from expert_data.negatives import build_coco_cat_neg_bank
 
 
 def parse_args() -> argparse.Namespace:
@@ -21,7 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output",
-        default="data/outputs/cat_neg_bank_v1.json",
+        default="data/outputs/cat_neg_bank_v2.json",
         help="Path to the category negative bank JSON output.",
     )
     return parser.parse_args()
@@ -40,10 +40,12 @@ def main() -> int:
     """Build and write the deterministic category hard-negative bank."""
 
     args = parse_args()
-    negative_bank = build_manual_seed_cat_neg_bank()
+    negative_bank = build_coco_cat_neg_bank()
     output_path = write_json(resolve_project_path(args.output), negative_bank)
     print(f"Wrote category hard-negative bank to {output_path}")
-    print(f"Covered categories: {', '.join(sorted(negative_bank))}")
+    min_count = min(len(entry["manual"]) for entry in negative_bank.values())
+    print(f"Covered categories: {len(negative_bank)}")
+    print(f"Minimum negatives per category: {min_count}")
     return 0
 
 
