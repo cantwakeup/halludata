@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+
+# Editors and OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local build and package outputs
+build/
+dist/
+*.egg-info/
+
+# Project-generated outputs
+data/outputs/*.json
+data/outputs/*.jsonl
+
+# Real datasets and large local assets
+data/raw/
+data/external/
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.zip
+*.tar
+*.gz

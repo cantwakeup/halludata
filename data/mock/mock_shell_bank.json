@@ -1,0 +1,38 @@
+{
+  "cat": {
+    "prompt_template": "Decide whether the statement is supported by the image.",
+    "positive_templates": [
+      "There is a {positive} in the image."
+    ],
+    "negative_templates": [
+      "There is a {negative} in the image."
+    ]
+  },
+  "cnt": {
+    "prompt_template": "Decide whether the statement is supported by the image.",
+    "positive_templates": [
+      "There are {positive} {positive_noun} in the image."
+    ],
+    "negative_templates": [
+      "There are {negative} {negative_noun} in the image."
+    ]
+  },
+  "col": {
+    "prompt_template": "Decide whether the statement is supported by the image.",
+    "positive_templates": [
+      "The {subject} is {positive}."
+    ],
+    "negative_templates": [
+      "The {subject} is {negative}."
+    ]
+  },
+  "rel": {
+    "prompt_template": "Decide whether the statement is supported by the image.",
+    "positive_templates": [
+      "The {subject} is {positive} the {object}."
+    ],
+    "negative_templates": [
+      "The {subject} is {negative} the {object}."
+    ]
+  }
+}

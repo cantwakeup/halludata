@@ -1,0 +1,51 @@
+version: v0_mini
+enabled_subtypes:
+  - cat
+  - cnt
+  - col
+  - rel
+pair_limits:
+  per_subtype: 128
+input_paths:
+  shell_bank: data/outputs/shell_bank_v1.json
+  cat_neg_bank: data/outputs/cat_neg_bank_v1.json
+  fact_index: data/outputs/fact_index_v0.jsonl
+  atomic_facts: data/outputs/atomic_facts_v0.jsonl
+output_paths:
+  pairs_unbalanced: data/outputs/pairs_unbalanced_v0.jsonl
+  pairs_balanced: data/outputs/pairs_balanced_v0.jsonl
+  pair_stats: data/outputs/pair_stats_v0.json
+output_path: data/outputs/pairs_balanced_v0.jsonl
+targets:
+  cat: 6
+  cnt: 5
+  col: 3
+  rel: 5
+caps:
+  per_label_cap: 3
+  per_rel_pattern_cap: 2
+sampling:
+  max_cat_anchors_per_image: 8
+  max_cnt_anchors_per_image: 8
+  max_col_anchors_per_image: 8
+  max_rel_pairs_per_image: 8
+coco:
+  instances_json: ""
+  panoptic_json: ""
+  panoptic_root: ""
+  image_root: ""
+  use_panoptic: false
+  use_images_for_color: false
+  thing_only: true
+  max_images: 50
+  sample_images_randomly: false
+  random_seed: 42
+run:
+  log_every: 20
+  save_every: 100
+  resume: false
+filters:
+  object_min_area_ratio: 0.01
+  rel_min_abs_dx: 0.75
+  rel_max_abs_dy: 1.0
+  rel_max_iou: 0.1
