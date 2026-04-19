@@ -1,0 +1,469 @@
+{
+  "counts_before_filter": {
+    "cat": 204,
+    "cnt": 112,
+    "col": 204,
+    "rel": 374
+  },
+  "counts_after_filter": {
+    "cat": 71,
+    "cnt": 106,
+    "col": 41,
+    "rel": 40
+  },
+  "counts_after_sampling_caps": {
+    "cat": 71,
+    "cnt": 106,
+    "col": 41,
+    "rel": 39
+  },
+  "counts_unbalanced": {
+    "cat": 71,
+    "cnt": 106,
+    "col": 41,
+    "rel": 39
+  },
+  "counts_balanced": {
+    "cat": 71,
+    "cnt": 106,
+    "col": 41,
+    "rel": 39
+  },
+  "dropped_by_reason": {
+    "ambiguous_cat_anchor": 133,
+    "ambiguous_col_anchor": 133,
+    "missing_color": 30,
+    "ambiguous_rel_anchor": 193,
+    "same_category_relation": 141,
+    "count_out_of_range": 6,
+    "no_valid_negative": 0,
+    "capped_cat_per_image": 0,
+    "capped_cnt_per_image": 0,
+    "capped_col_per_image": 0,
+    "capped_rel_per_image": 1
+  },
+  "template_usage": {
+    "unbalanced": {
+      "cat": {
+        "cat_tpl_001": 18,
+        "cat_tpl_002": 18,
+        "cat_tpl_003": 18,
+        "cat_tpl_004": 17
+      },
+      "cnt": {
+        "cnt_tpl_001": 36,
+        "cnt_tpl_002": 35,
+        "cnt_tpl_003": 35
+      },
+      "col": {
+        "col_tpl_001": 14,
+        "col_tpl_002": 14,
+        "col_tpl_003": 13
+      },
+      "rel": {
+        "rel_tpl_001": 13,
+        "rel_tpl_002": 13,
+        "rel_tpl_003": 13
+      }
+    },
+    "balanced": {
+      "cat": {
+        "cat_tpl_001": 18,
+        "cat_tpl_002": 18,
+        "cat_tpl_003": 18,
+        "cat_tpl_004": 17
+      },
+      "cnt": {
+        "cnt_tpl_001": 36,
+        "cnt_tpl_002": 35,
+        "cnt_tpl_003": 35
+      },
+      "col": {
+        "col_tpl_001": 14,
+        "col_tpl_002": 14,
+        "col_tpl_003": 13
+      },
+      "rel": {
+        "rel_tpl_001": 13,
+        "rel_tpl_002": 13,
+        "rel_tpl_003": 13
+      }
+    }
+  },
+  "label_usage_topk": {
+    "unbalanced": {
+      "cat": [
+        {
+          "label": "person",
+          "count": 5
+        },
+        {
+          "label": "dining table",
+          "count": 4
+        },
+        {
+          "label": "clock",
+          "count": 4
+        },
+        {
+          "label": "fork",
+          "count": 3
+        },
+        {
+          "label": "cake",
+          "count": 3
+        }
+      ],
+      "cnt": [
+        {
+          "label": "person",
+          "count": 13
+        },
+        {
+          "label": "dining table",
+          "count": 6
+        },
+        {
+          "label": "chair",
+          "count": 4
+        },
+        {
+          "label": "knife",
+          "count": 4
+        },
+        {
+          "label": "potted plant",
+          "count": 4
+        }
+      ],
+      "col": [
+        {
+          "label": "fork",
+          "count": 3
+        },
+        {
+          "label": "dining table",
+          "count": 3
+        },
+        {
+          "label": "pizza",
+          "count": 2
+        },
+        {
+          "label": "cake",
+          "count": 2
+        },
+        {
+          "label": "handbag",
+          "count": 2
+        }
+      ],
+      "rel": [
+        {
+          "label": "cup|left of|cake",
+          "count": 1
+        },
+        {
+          "label": "knife|above|cake",
+          "count": 1
+        },
+        {
+          "label": "cup|right of|knife",
+          "count": 1
+        },
+        {
+          "label": "cup|right of|cake",
+          "count": 1
+        },
+        {
+          "label": "cup|right of|book",
+          "count": 1
+        }
+      ]
+    },
+    "balanced": {
+      "cat": [
+        {
+          "label": "person",
+          "count": 5
+        },
+        {
+          "label": "dining table",
+          "count": 4
+        },
+        {
+          "label": "clock",
+          "count": 4
+        },
+        {
+          "label": "fork",
+          "count": 3
+        },
+        {
+          "label": "cake",
+          "count": 3
+        }
+      ],
+      "cnt": [
+        {
+          "label": "person",
+          "count": 13
+        },
+        {
+          "label": "dining table",
+          "count": 6
+        },
+        {
+          "label": "chair",
+          "count": 4
+        },
+        {
+          "label": "knife",
+          "count": 4
+        },
+        {
+          "label": "potted plant",
+          "count": 4
+        }
+      ],
+      "col": [
+        {
+          "label": "fork",
+          "count": 3
+        },
+        {
+          "label": "dining table",
+          "count": 3
+        },
+        {
+          "label": "pizza",
+          "count": 2
+        },
+        {
+          "label": "cake",
+          "count": 2
+        },
+        {
+          "label": "handbag",
+          "count": 2
+        }
+      ],
+      "rel": [
+        {
+          "label": "cup|left of|cake",
+          "count": 1
+        },
+        {
+          "label": "knife|above|cake",
+          "count": 1
+        },
+        {
+          "label": "cup|right of|knife",
+          "count": 1
+        },
+        {
+          "label": "cup|right of|cake",
+          "count": 1
+        },
+        {
+          "label": "cup|right of|book",
+          "count": 1
+        }
+      ]
+    }
+  },
+  "per_image_pair_counts": {
+    "unbalanced": {
+      "110": 8,
+      "113": 13,
+      "127": 43,
+      "133": 3,
+      "136": 2,
+      "138": 14,
+      "142": 13,
+      "144": 1,
+      "149": 3,
+      "151": 3,
+      "154": 1,
+      "164": 5,
+      "165": 7,
+      "192": 4,
+      "194": 7,
+      "196": 6,
+      "208": 2,
+      "241": 6,
+      "247": 4,
+      "25": 1,
+      "257": 2,
+      "260": 8,
+      "263": 1,
+      "283": 9,
+      "294": 10,
+      "30": 4,
+      "307": 6,
+      "308": 3,
+      "34": 3,
+      "36": 4,
+      "42": 3,
+      "49": 4,
+      "61": 1,
+      "64": 9,
+      "71": 2,
+      "72": 1,
+      "73": 1,
+      "74": 6,
+      "77": 1,
+      "78": 2,
+      "81": 3,
+      "86": 8,
+      "89": 7,
+      "9": 5,
+      "92": 6,
+      "94": 2
+    },
+    "balanced": {
+      "110": 8,
+      "113": 13,
+      "127": 43,
+      "133": 3,
+      "136": 2,
+      "138": 14,
+      "142": 13,
+      "144": 1,
+      "149": 3,
+      "151": 3,
+      "154": 1,
+      "164": 5,
+      "165": 7,
+      "192": 4,
+      "194": 7,
+      "196": 6,
+      "208": 2,
+      "241": 6,
+      "247": 4,
+      "25": 1,
+      "257": 2,
+      "260": 8,
+      "263": 1,
+      "283": 9,
+      "294": 10,
+      "30": 4,
+      "307": 6,
+      "308": 3,
+      "34": 3,
+      "36": 4,
+      "42": 3,
+      "49": 4,
+      "61": 1,
+      "64": 9,
+      "71": 2,
+      "72": 1,
+      "73": 1,
+      "74": 6,
+      "77": 1,
+      "78": 2,
+      "81": 3,
+      "86": 8,
+      "89": 7,
+      "9": 5,
+      "92": 6,
+      "94": 2
+    }
+  },
+  "subtype_counts_by_image_sample": {
+    "unbalanced": [
+      {
+        "image_id": "110",
+        "counts": {
+          "cat": 2,
+          "cnt": 4,
+          "col": 2,
+          "rel": 0
+        }
+      },
+      {
+        "image_id": "113",
+        "counts": {
+          "cat": 4,
+          "cnt": 6,
+          "col": 1,
+          "rel": 2
+        }
+      },
+      {
+        "image_id": "127",
+        "counts": {
+          "cat": 8,
+          "cnt": 10,
+          "col": 5,
+          "rel": 20
+        }
+      },
+      {
+        "image_id": "133",
+        "counts": {
+          "cat": 1,
+          "cnt": 1,
+          "col": 1,
+          "rel": 0
+        }
+      },
+      {
+        "image_id": "136",
+        "counts": {
+          "cat": 0,
+          "cnt": 2,
+          "col": 0,
+          "rel": 0
+        }
+      }
+    ],
+    "balanced": [
+      {
+        "image_id": "110",
+        "counts": {
+          "cat": 2,
+          "cnt": 4,
+          "col": 2,
+          "rel": 0
+        }
+      },
+      {
+        "image_id": "113",
+        "counts": {
+          "cat": 4,
+          "cnt": 6,
+          "col": 1,
+          "rel": 2
+        }
+      },
+      {
+        "image_id": "127",
+        "counts": {
+          "cat": 8,
+          "cnt": 10,
+          "col": 5,
+          "rel": 20
+        }
+      },
+      {
+        "image_id": "133",
+        "counts": {
+          "cat": 1,
+          "cnt": 1,
+          "col": 1,
+          "rel": 0
+        }
+      },
+      {
+        "image_id": "136",
+        "counts": {
+          "cat": 0,
+          "cnt": 2,
+          "col": 0,
+          "rel": 0
+        }
+      }
+    ]
+  }
+}

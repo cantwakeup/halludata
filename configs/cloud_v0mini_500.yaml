@@ -46,8 +46,8 @@ coco:
   use_panoptic: true
   use_images_for_color: true  
   thing_only: true
-  max_images: 50
-  sample_images_randomly: false
+  max_images: 500
+  sample_images_randomly: true
   random_seed: 42
 
 run:
