@@ -7,6 +7,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from expert_data.negatives import get_cat_negative_candidates
 from expert_data.schemas import FactRecord, PairRecord
 from expert_data.shells import get_shell_templates
+from expert_data.text_utils import count_conditioned_noun, pluralize_noun
 
 DEFAULT_COLOR_NEGATIVES = ["black", "white", "red", "yellow", "green", "blue", "brown", "orange"]
 VALID_REL_PREDICATES = {"left of", "right of", "above", "below"}
@@ -22,16 +23,6 @@ def _filter_facts(facts: Iterable[FactRecord], subtype: str) -> list[FactRecord]
     """Return fact records that belong to one subtype while preserving order."""
 
     return [fact for fact in facts if fact.subtype == subtype]
-
-
-def _pluralize(noun: str) -> str:
-    """Return a simple plural form for a noun used by count templates."""
-
-    if noun.endswith(("s", "x", "z", "ch", "sh")):
-        return f"{noun}es"
-    if noun.endswith("y") and len(noun) > 1 and noun[-2].lower() not in "aeiou":
-        return f"{noun[:-1]}ies"
-    return f"{noun}s"
 
 
 def _select_shell_template(
@@ -53,6 +44,8 @@ def _render_pair_with_shared_shell(
     pos_label: Any,
     neg_label: Any,
     metadata: Mapping[str, Any],
+    pos_extra_context: Mapping[str, Any] | None = None,
+    neg_extra_context: Mapping[str, Any] | None = None,
 ) -> PairRecord:
     """Render a pair where positive and negative responses differ at one slot only."""
 
@@ -63,6 +56,10 @@ def _render_pair_with_shared_shell(
     neg_context = dict(shared_context)
     pos_context[target_slot] = pos_label
     neg_context[target_slot] = neg_label
+    if pos_extra_context:
+        pos_context.update(dict(pos_extra_context))
+    if neg_extra_context:
+        neg_context.update(dict(neg_extra_context))
 
     return PairRecord(
         pair_id=f"{fact.fact_id}_{template['template_id']}_pair",
@@ -200,11 +197,13 @@ def render_cnt_pairs(
             _render_pair_with_shared_shell(
                 fact=fact,
                 template=template,
-                shared_context={"obj_pl": _pluralize(fact.subject.category)},
+                shared_context={"obj_pl": pluralize_noun(fact.subject.category)},
                 target_slot="count",
                 pos_label=int(fact.positive_value),
                 neg_label=negative_count,
                 metadata={"anchor_label": fact.subject.category},
+                pos_extra_context={"obj_count": count_conditioned_noun(fact.subject.category, fact.positive_value)},
+                neg_extra_context={"obj_count": count_conditioned_noun(fact.subject.category, negative_count)},
             )
         )
         if pair_limit is not None and len(pairs) >= pair_limit:

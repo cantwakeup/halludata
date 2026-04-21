@@ -11,7 +11,7 @@ from expert_data.io_utils import read_json
 
 SHELL_PLACEHOLDER_RULES: dict[str, set[str]] = {
     "cat": {"label"},
-    "cnt": {"count", "obj_pl"},
+    "cnt": {"count", "obj_pl", "obj_count"},
     "col": {"obj", "color"},
     "rel": {"obj1", "obj2", "rel"},
 }
@@ -55,19 +55,19 @@ DETERMINISTIC_TEMPLATES: dict[str, list[dict[str, str]]] = {
             "template_id": "cnt_tpl_001",
             "text_source": "template",
             "q_template": "How many {obj_pl} are visible in the image?",
-            "r_template": "The image shows {count} {obj_pl}.",
+            "r_template": "The image shows {count} {obj_count}.",
         },
         {
             "template_id": "cnt_tpl_002",
             "text_source": "template",
             "q_template": "What is the count of {obj_pl} in the scene?",
-            "r_template": "There are {count} {obj_pl} in the scene.",
+            "r_template": "The scene contains {count} {obj_count}.",
         },
         {
             "template_id": "cnt_tpl_003",
             "text_source": "template",
             "q_template": "Report the number of {obj_pl} present.",
-            "r_template": "The visible count is {count} {obj_pl}.",
+            "r_template": "The visible count is {count} {obj_count}.",
         },
     ],
     "col": [
@@ -124,6 +124,22 @@ def extract_placeholders(template: str) -> set[str]:
     return placeholders
 
 
+def _upgrade_legacy_template(subtype: str, template: Mapping[str, Any]) -> dict[str, str]:
+    """Upgrade legacy templates in memory so newer renderers stay backward compatible."""
+
+    upgraded = {
+        "template_id": str(template["template_id"]),
+        "text_source": str(template["text_source"]),
+        "q_template": str(template["q_template"]),
+        "r_template": str(template["r_template"]),
+    }
+    if subtype == "cnt" and "{obj_count}" not in upgraded["r_template"]:
+        upgraded["r_template"] = upgraded["r_template"].replace("{obj_pl}", "{obj_count}")
+    if subtype == "cnt" and upgraded["r_template"] == "There are {count} {obj_count} in the scene.":
+        upgraded["r_template"] = "The scene contains {count} {obj_count}."
+    return upgraded
+
+
 def validate_shell_template(subtype: str, template: Mapping[str, Any]) -> None:
     """Validate one shell template entry for a subtype."""
 
@@ -133,13 +149,14 @@ def validate_shell_template(subtype: str, template: Mapping[str, Any]) -> None:
         missing = ", ".join(sorted(missing_keys))
         raise ValueError(f"Template for subtype '{subtype}' is missing keys: {missing}")
 
-    text_source = str(template["text_source"])
+    upgraded_template = _upgrade_legacy_template(subtype, template)
+    text_source = str(upgraded_template["text_source"])
     if text_source not in {"template", "gqa"}:
         raise ValueError(f"Unsupported text_source '{text_source}' for subtype '{subtype}'")
 
     allowed_placeholders = SHELL_PLACEHOLDER_RULES[subtype]
-    q_placeholders = extract_placeholders(str(template["q_template"]))
-    r_placeholders = extract_placeholders(str(template["r_template"]))
+    q_placeholders = extract_placeholders(str(upgraded_template["q_template"]))
+    r_placeholders = extract_placeholders(str(upgraded_template["r_template"]))
     combined_placeholders = q_placeholders | r_placeholders
     illegal_placeholders = combined_placeholders - allowed_placeholders
     if illegal_placeholders:
@@ -183,7 +200,10 @@ def validate_shell_bank(shell_bank: Mapping[str, Any]) -> None:
 def build_deterministic_shell_bank() -> dict[str, list[dict[str, str]]]:
     """Build a deterministic shell bank for all supported mock subtypes."""
 
-    shell_bank = deepcopy(DETERMINISTIC_TEMPLATES)
+    shell_bank = {
+        subtype: [_upgrade_legacy_template(subtype, entry) for entry in entries]
+        for subtype, entries in deepcopy(DETERMINISTIC_TEMPLATES).items()
+    }
     validate_shell_bank(shell_bank)
     return shell_bank
 
@@ -197,15 +217,7 @@ def load_shell_bank(path: str | Path) -> dict[str, list[dict[str, str]]]:
     shell_bank = {str(subtype): entries for subtype, entries in payload.items()}
     validate_shell_bank(shell_bank)
     return {
-        str(subtype): [
-            {
-                "template_id": str(entry["template_id"]),
-                "text_source": str(entry["text_source"]),
-                "q_template": str(entry["q_template"]),
-                "r_template": str(entry["r_template"]),
-            }
-            for entry in entries
-        ]
+        str(subtype): [_upgrade_legacy_template(str(subtype), entry) for entry in entries]
         for subtype, entries in shell_bank.items()
     }
 

@@ -1,4 +1,4 @@
-version: cloud_smoke
+version: cloud_v0mini_500
 
 enabled_subtypes:
   - cat
@@ -44,7 +44,7 @@ coco:
   panoptic_root: /home/huiwei/sy/sy_data/COCO2017/panoptic_train2017
   image_root: /home/huiwei/sy/sy_data/COCO2017/train2017
   use_panoptic: true
-  use_images_for_color: true  
+  use_images_for_color: true
   thing_only: true
   max_images: 500
   sample_images_randomly: true

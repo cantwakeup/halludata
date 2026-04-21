@@ -26,6 +26,9 @@ from expert_data.io_utils import read_jsonl, read_yaml, write_jsonl
 from expert_data.schemas import FactRecord, RelationInfo
 
 DEFAULT_INSTANCES_JSON = "data/mock/mock_coco_instances.json"
+DEFAULT_PANOPTIC_JSON = "data/mock/mock_coco_panoptic.json"
+DEFAULT_PANOPTIC_ROOT = "data/mock/panoptic"
+DEFAULT_IMAGE_ROOT = "data/mock/images"
 DEFAULT_FACT_INDEX_PATH = "data/outputs/fact_index_v0.jsonl"
 DEFAULT_ATOMIC_FACTS_PATH = "data/outputs/atomic_facts_v0.jsonl"
 
@@ -271,13 +274,40 @@ def build_coco_fact_outputs(
 
 
 def _resolve_instances_json(cli_args: argparse.Namespace, coco_cfg: Mapping[str, Any]) -> Path:
-    """Resolve the active instances JSON path, falling back to the mock file when empty."""
+    """Resolve the active instances JSON path, falling back to the mock file when unavailable."""
 
     configured_path = cli_args.instances_json or coco_cfg.get("instances_json") or DEFAULT_INSTANCES_JSON
     resolved_path = resolve_optional_project_path(configured_path)
     if resolved_path is None:
         return resolve_project_path(DEFAULT_INSTANCES_JSON)
+    if not resolved_path.exists():
+        return resolve_project_path(DEFAULT_INSTANCES_JSON)
     return resolved_path
+
+
+def _path_is_unavailable(raw_path: str | Path | None) -> bool:
+    """Return whether an optional configured path is empty or missing on this machine."""
+
+    resolved_path = resolve_optional_project_path(raw_path)
+    return resolved_path is None or not resolved_path.exists()
+
+
+def _with_mock_color_fallback(instances_json_path: Path, coco_cfg: Mapping[str, Any]) -> dict[str, Any]:
+    """Use mock panoptic and image roots when mock instances are active but cloud paths are absent."""
+
+    updated_cfg = dict(coco_cfg)
+    mock_instances_path = resolve_project_path(DEFAULT_INSTANCES_JSON).resolve()
+    if instances_json_path.resolve() != mock_instances_path:
+        return updated_cfg
+
+    if updated_cfg.get("use_panoptic") and _path_is_unavailable(updated_cfg.get("panoptic_json")):
+        updated_cfg["panoptic_json"] = DEFAULT_PANOPTIC_JSON
+    if updated_cfg.get("use_images_for_color"):
+        if _path_is_unavailable(updated_cfg.get("panoptic_root")):
+            updated_cfg["panoptic_root"] = DEFAULT_PANOPTIC_ROOT
+        if _path_is_unavailable(updated_cfg.get("image_root")):
+            updated_cfg["image_root"] = DEFAULT_IMAGE_ROOT
+    return updated_cfg
 
 
 def main() -> int:
@@ -303,6 +333,7 @@ def main() -> int:
 
     resume_enabled = bool(args.resume or run_cfg.get("resume", False))
     instances_json_path = _resolve_instances_json(args, coco_cfg)
+    coco_cfg = _with_mock_color_fallback(instances_json_path, coco_cfg)
     fact_index_output_path = args.output_fact_index or DEFAULT_FACT_INDEX_PATH
     atomic_facts_output_path = args.output_atomic_facts or DEFAULT_ATOMIC_FACTS_PATH
 
