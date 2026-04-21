@@ -25,6 +25,9 @@ dist/
 # Project-generated outputs
 data/outputs/*.json
 data/outputs/*.jsonl
+data/outputs/**/*.json
+data/outputs/**/*.jsonl
+data/outputs/**/*.pt
 
 # Real datasets and large local assets
 data/raw/
