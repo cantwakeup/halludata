@@ -154,10 +154,10 @@ class LlavaActivationAdapter(BaseActivationAdapter):
                 from transformers import LlavaForConditionalGeneration
             except ImportError:
                 LlavaForConditionalGeneration = None
-        except ImportError as exc:
+        except Exception as exc:
             raise RuntimeError(
                 "LlavaActivationAdapter requires optional dependencies: torch, transformers, and Pillow. "
-                "Install them in the GPU environment before running --adapter llava."
+                "Install a working GPU environment before running --adapter llava."
             ) from exc
 
         self._torch = torch

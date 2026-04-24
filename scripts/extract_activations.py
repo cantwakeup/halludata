@@ -113,13 +113,13 @@ def select_rows_for_shard(
 
 
 def _import_torch_or_none() -> Any | None:
-    """Import torch lazily for stacking tensors when available."""
+    """Import torch lazily for stacking tensors when available and usable."""
 
     try:
         import torch
 
         return torch
-    except ImportError:
+    except Exception:
         return None
 
 

@@ -77,13 +77,13 @@ def read_json(path: str | Path) -> dict[str, Any]:
 
 
 def _import_torch_or_none() -> Any | None:
-    """Import torch lazily, returning None when it is not installed."""
+    """Import torch lazily, returning None when it is not installed or usable."""
 
     try:
         import torch
 
         return torch
-    except ImportError:
+    except Exception:
         return None
 
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -12,8 +11,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
+if str(PROJECT_ROOT / "tests") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "tests"))
 
 from expert_data.image_resolver import CocoImageResolver
+from temp_utils import TemporaryWorkspace
 
 
 class ImageResolverTest(unittest.TestCase):
@@ -22,7 +24,7 @@ class ImageResolverTest(unittest.TestCase):
     def test_instances_json_file_name_resolution_accepts_int_and_str(self) -> None:
         """Resolver should use images[].file_name for both int and string image IDs."""
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with TemporaryWorkspace() as tmp_dir:
             root = Path(tmp_dir)
             image_root = root / "images"
             image_root.mkdir()
@@ -41,7 +43,7 @@ class ImageResolverTest(unittest.TestCase):
     def test_fallback_uses_12_digit_coco_jpg(self) -> None:
         """Resolver should fall back to a 12-digit COCO jpg when no instances JSON is provided."""
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with TemporaryWorkspace() as tmp_dir:
             image_root = Path(tmp_dir)
             image_path = image_root / "000000000007.jpg"
             image_path.write_bytes(b"fake image")
@@ -53,7 +55,7 @@ class ImageResolverTest(unittest.TestCase):
     def test_missing_image_raises_clear_error(self) -> None:
         """Missing images should raise FileNotFoundError with the image ID in the message."""
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with TemporaryWorkspace() as tmp_dir:
             resolver = CocoImageResolver(image_root=tmp_dir)
             with self.assertRaisesRegex(FileNotFoundError, "image_id=123"):
                 resolver.resolve(123)

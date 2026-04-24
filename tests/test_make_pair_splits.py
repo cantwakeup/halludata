@@ -5,7 +5,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -13,6 +12,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
+if str(PROJECT_ROOT / "tests") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "tests"))
+
+from temp_utils import TemporaryWorkspace
 
 SCRIPT_PATH = PROJECT_ROOT / "scripts" / "make_pair_splits.py"
 SPEC = importlib.util.spec_from_file_location("make_pair_splits_script", SCRIPT_PATH)
@@ -81,7 +84,7 @@ class MakePairSplitsTest(unittest.TestCase):
     def test_image_ids_do_not_cross_splits_and_pair_ids_are_complete(self) -> None:
         """Every image should appear in one split and every pair_id should be preserved once."""
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with TemporaryWorkspace() as tmp_dir:
             tmp_path = Path(tmp_dir)
             input_path = tmp_path / "pairs.jsonl"
             out_dir = tmp_path / "splits"
@@ -126,7 +129,7 @@ class MakePairSplitsTest(unittest.TestCase):
     def test_same_seed_is_deterministic_and_different_seed_can_change_assignments(self) -> None:
         """Assignments should be reproducible for a fixed seed and seed-sensitive for tied groups."""
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with TemporaryWorkspace() as tmp_dir:
             tmp_path = Path(tmp_dir)
             input_path = tmp_path / "pairs.jsonl"
             _write_jsonl(input_path, _mock_pairs())
@@ -153,7 +156,7 @@ class MakePairSplitsTest(unittest.TestCase):
     def test_missing_template_id_uses_sentinel(self) -> None:
         """Missing template metadata should not crash and should be counted explicitly."""
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with TemporaryWorkspace() as tmp_dir:
             tmp_path = Path(tmp_dir)
             input_path = tmp_path / "pairs.jsonl"
             _write_jsonl(input_path, _mock_pairs())

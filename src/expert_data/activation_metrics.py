@@ -8,13 +8,13 @@ from typing import Any, Callable, Sequence
 
 
 def _import_torch_or_none() -> Any | None:
-    """Import torch lazily, returning None when it is unavailable."""
+    """Import torch lazily, returning None when it is unavailable or broken."""
 
     try:
         import torch
 
         return torch
-    except ImportError:
+    except Exception:
         return None
 
 

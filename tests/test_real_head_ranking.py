@@ -13,7 +13,7 @@ if str(SRC_ROOT) not in sys.path:
 
 try:
     import torch
-except ImportError:  # pragma: no cover - exercised only without torch installed.
+except Exception:  # pragma: no cover - exercised only without a working torch install.
     torch = None
 
 from expert_data.real_head_ranking import (

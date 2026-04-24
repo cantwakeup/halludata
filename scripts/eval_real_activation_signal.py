@@ -59,8 +59,8 @@ def _require_torch() -> Any:
         import torch
 
         return torch
-    except ImportError as exc:
-        raise RuntimeError("eval_real_activation_signal.py requires torch to save prototypes.pt.") from exc
+    except Exception as exc:
+        raise RuntimeError("eval_real_activation_signal.py requires a working torch installation.") from exc
 
 
 def _prototype_summary(prototypes: dict[str, Any]) -> dict[str, Any]:

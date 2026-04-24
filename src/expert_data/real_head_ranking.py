@@ -17,8 +17,8 @@ def _require_torch() -> Any:
         import torch
 
         return torch
-    except ImportError as exc:
-        raise RuntimeError("Real head ranking requires torch.") from exc
+    except Exception as exc:
+        raise RuntimeError("Real head ranking requires a working torch installation.") from exc
 
 
 def _activation_dict(cache_payload: Mapping[str, Any]) -> Mapping[str, Any]:

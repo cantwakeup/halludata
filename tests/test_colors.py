@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -11,6 +10,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
+if str(PROJECT_ROOT / "tests") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "tests"))
 
 from expert_data.colors import (
     COLOR_VOCAB,
@@ -19,6 +20,7 @@ from expert_data.colors import (
     estimate_dominant_color,
     extract_mask_pixels_from_panoptic,
 )
+from temp_utils import TemporaryWorkspace
 
 
 def _write_ppm(path: Path, width: int, height: int, pixels: list[tuple[int, int, int]]) -> None:
@@ -50,7 +52,7 @@ class ColorsTest(unittest.TestCase):
     def test_extract_mask_pixels_and_annotation_lookup_with_ppm_fallback(self) -> None:
         """The PPM fallback should support mask extraction and per-annotation color lookup."""
 
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with TemporaryWorkspace() as temp_dir:
             temp_root = Path(temp_dir)
             image_path = temp_root / "image.ppm"
             mask_path = temp_root / "mask.ppm"
@@ -109,4 +111,3 @@ class ColorsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

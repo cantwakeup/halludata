@@ -63,8 +63,8 @@ def _require_torch() -> Any:
         import torch
 
         return torch
-    except ImportError as exc:
-        raise RuntimeError("run_real_head_ranking.py requires torch.") from exc
+    except Exception as exc:
+        raise RuntimeError("run_real_head_ranking.py requires a working torch installation.") from exc
 
 
 def load_prototypes(path: str | Path) -> dict[str, Any]:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -11,8 +10,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
+if str(PROJECT_ROOT / "tests") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "tests"))
 
 from expert_data.activation_cache import load_activation_cache, save_activation_cache, tensor_shape, utc_now_iso
+from temp_utils import TemporaryWorkspace
 
 
 class ActivationCacheTest(unittest.TestCase):
@@ -21,7 +23,7 @@ class ActivationCacheTest(unittest.TestCase):
     def test_save_and_load_mock_cache(self) -> None:
         """Cache helpers should preserve IDs, row indices, metadata, and manifest fields."""
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with TemporaryWorkspace() as tmp_dir:
             out_dir = Path(tmp_dir) / "cache"
             cache_dict = {
                 "pair_ids": ["p0", "p1"],

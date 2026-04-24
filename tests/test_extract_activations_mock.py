@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -13,8 +12,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
+if str(PROJECT_ROOT / "tests") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "tests"))
 
 from expert_data.activation_cache import load_activation_cache, tensor_shape
+from temp_utils import TemporaryWorkspace
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
@@ -67,7 +69,7 @@ class ExtractActivationsMockTest(unittest.TestCase):
     def test_mock_extraction_writes_cache_with_expected_shape(self) -> None:
         """Mock extraction should write activations, metadata, and manifest with [N,L,H,D] shapes."""
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with TemporaryWorkspace() as tmp_dir:
             tmp_path = Path(tmp_dir)
             pairs_path = tmp_path / "pairs.jsonl"
             out_dir = tmp_path / "cache"
@@ -100,7 +102,7 @@ class ExtractActivationsMockTest(unittest.TestCase):
     def test_shards_have_disjoint_rows_and_merge_restores_all_pairs(self) -> None:
         """Modulo shards should be disjoint and merge into original row-index order."""
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with TemporaryWorkspace() as tmp_dir:
             tmp_path = Path(tmp_dir)
             pairs = _mock_pairs(6)
             pairs_path = tmp_path / "pairs.jsonl"
@@ -146,7 +148,7 @@ class ExtractActivationsMockTest(unittest.TestCase):
     def test_missing_required_field_fails_clearly(self) -> None:
         """Rows missing required pair fields should fail before extraction."""
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with TemporaryWorkspace() as tmp_dir:
             tmp_path = Path(tmp_dir)
             pairs_path = tmp_path / "bad_pairs.jsonl"
             bad_row = _mock_pairs(1)[0]

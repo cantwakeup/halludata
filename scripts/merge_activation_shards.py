@@ -43,13 +43,13 @@ def ensure_output_dir(out_dir: Path, overwrite: bool) -> None:
 
 
 def _import_torch_or_none() -> Any | None:
-    """Import torch lazily for tensor concatenation when available."""
+    """Import torch lazily for tensor concatenation when available and usable."""
 
     try:
         import torch
 
         return torch
-    except ImportError:
+    except Exception:
         return None
 
 
