@@ -56,7 +56,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--steer-router", choices=["no_filter", "force_cat", "force_attr", "force_rel", "rule"], default="no_filter")
     parser.add_argument("--steer-enabled-experts", default="cat,attr,rel", help="Comma-separated experts.")
     parser.add_argument("--steer-prefill", default="false", help="Whether to edit prompt/prefill tokens.")
+    parser.add_argument("--steer-decode", default="true", help="Whether to edit decoding-token forwards.")
     parser.add_argument("--steer-apply-to", choices=["last_token", "all_tokens"], default="last_token")
+    parser.add_argument("--prefill-apply-to", choices=["last_token", "all_tokens"], default="last_token")
+    parser.add_argument("--decode-apply-to", choices=["last_token"], default="last_token")
+    parser.add_argument("--debug-log-hook-delta", default="false", help="Record first-hit edit magnitudes per hooked layer.")
     return parser.parse_args()
 
 
@@ -402,6 +406,10 @@ def build_config(args: argparse.Namespace, samples: list[dict[str, Any]]) -> dic
             "enabled_experts": parse_csv_items(args.steer_enabled_experts),
             "apply_to": str(args.steer_apply_to),
             "steer_prefill": normalize_bool(args.steer_prefill),
+            "steer_decode": normalize_bool(args.steer_decode),
+            "prefill_apply_to": str(args.prefill_apply_to),
+            "decode_apply_to": str(args.decode_apply_to),
+            "debug_log_hook_delta": normalize_bool(args.debug_log_hook_delta),
         },
     }
 
@@ -452,6 +460,10 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
                 enabled_experts=tuple(parse_csv_items(args.steer_enabled_experts)),
                 apply_to=str(args.steer_apply_to),
                 steer_prefill=normalize_bool(args.steer_prefill),
+                steer_decode=normalize_bool(args.steer_decode),
+                prefill_apply_to=str(args.prefill_apply_to),
+                decode_apply_to=str(args.decode_apply_to),
+                debug_log_hook_delta=normalize_bool(args.debug_log_hook_delta),
             )
             generator.controller = controller
         del model_probe

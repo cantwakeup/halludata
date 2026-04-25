@@ -152,6 +152,12 @@ class ExpertSteeringController:
         enabled_experts: tuple[str, ...] | list[str] = VALID_EXPERTS,
         apply_to: str = "last_token",
         steer_prefill: bool = False,
+        steer_decode: bool = True,
+        prefill_apply_to: str | None = None,
+        decode_apply_to: str | None = None,
+        debug_log_hook_delta: bool = False,
+        debug_random_vector: bool = False,
+        debug_random_seed: int = 42,
         seed: int = 42,
     ) -> None:
         """Load expert vectors, select heads, and register disabled hooks on a model."""
@@ -173,11 +179,22 @@ class ExpertSteeringController:
             raise ValueError("enabled_experts must include at least one of cat, attr, rel")
         self.apply_to = str(apply_to)
         self.steer_prefill = bool(steer_prefill)
+        self.steer_decode = bool(steer_decode)
+        self.prefill_apply_to = str(prefill_apply_to or apply_to)
+        self.decode_apply_to = str(decode_apply_to or "last_token")
+        self.debug_log_hook_delta = bool(debug_log_hook_delta)
+        self.debug_random_vector = bool(debug_random_vector)
+        self.debug_random_seed = int(debug_random_seed)
         self.seed = int(seed)
         self.enabled = False
         self.hook_call_count = 0
         self.edited_token_count = 0
+        self.prefill_hook_call_count = 0
+        self.decode_hook_call_count = 0
+        self.prefill_edited_token_count = 0
+        self.decode_edited_token_count = 0
         self.last_hook_shapes: list[dict[str, Any]] = []
+        self.hook_delta_by_layer: dict[int, dict[str, float | int | list[int]]] = {}
 
         payload = self._load_vector_payload(self.vector_path)
         self.vector_layers = [int(layer) for layer in payload["layers"]]
@@ -189,6 +206,8 @@ class ExpertSteeringController:
         self.head_dim = int(payload["head_dim"])
         self.hidden_size = int(payload["hidden_size"])
         self.vectors_by_expert_layer = self._index_vectors(payload["vectors"])
+        if self.debug_random_vector:
+            self._replace_with_debug_random_vectors()
         self.decoder_layers = list(find_decoder_layers(self.model))
         if max(self.requested_layers) >= len(self.decoder_layers):
             raise ValueError(f"Requested layer exceeds model depth: {max(self.requested_layers)} >= {len(self.decoder_layers)}")
@@ -222,6 +241,20 @@ class ExpertSteeringController:
                 for layer_index, layer in enumerate(self.vector_layers)
             }
         return indexed
+
+    def _replace_with_debug_random_vectors(self) -> None:
+        """Replace loaded vectors with deterministic random vectors for hook sanity checks."""
+
+        generator = self._torch.Generator(device="cpu")
+        generator.manual_seed(self.debug_random_seed)
+        for expert in VALID_EXPERTS:
+            for layer in self.vector_layers:
+                self.vectors_by_expert_layer[expert][layer] = self._torch.randn(
+                    self.num_heads,
+                    self.head_dim,
+                    generator=generator,
+                    dtype=self._torch.float32,
+                )
 
     def _combine_vectors(self, experts: tuple[str, ...]) -> dict[int, Any]:
         """Sum active expert vectors for each requested layer."""
@@ -290,19 +323,73 @@ class ExpertSteeringController:
             hook.remove()
         self._hooks = []
 
-    def _target_slice(self, hidden_states: Any) -> Any | None:
-        """Return the token positions to edit for the current forward call."""
+    def reset_diagnostics(self) -> None:
+        """Reset hook counters without changing the active steering configuration."""
+
+        self.hook_call_count = 0
+        self.edited_token_count = 0
+        self.prefill_hook_call_count = 0
+        self.decode_hook_call_count = 0
+        self.prefill_edited_token_count = 0
+        self.decode_edited_token_count = 0
+        self.last_hook_shapes = []
+        self.hook_delta_by_layer = {}
+
+    def _forward_kind(self, hidden_states: Any) -> str:
+        """Classify a hook input as prefill (`T > 1`) or decode (`T == 1`)."""
+
+        seq_len = int(hidden_states.shape[1])
+        return "prefill" if seq_len > 1 else "decode"
+
+    def _target_slice(self, hidden_states: Any) -> tuple[str, Any] | None:
+        """Return the forward kind and token positions to edit for one hook call."""
 
         seq_len = int(hidden_states.shape[1])
         if seq_len <= 0:
             return None
-        if not self.steer_prefill and seq_len > 1:
+        forward_kind = self._forward_kind(hidden_states)
+        if forward_kind == "prefill":
+            if not self.steer_prefill:
+                return None
+            apply_mode = self.prefill_apply_to
+        else:
+            if not self.steer_decode:
+                return None
+            apply_mode = self.decode_apply_to
+        if apply_mode == "last_token":
+            return forward_kind, slice(seq_len - 1, seq_len)
+        if apply_mode == "all_tokens" and forward_kind == "prefill":
+            return forward_kind, slice(0, seq_len)
+        if apply_mode == "all_tokens" and forward_kind == "decode":
+            return forward_kind, slice(seq_len - 1, seq_len)
+        raise ValueError(f"Unsupported {forward_kind} apply mode: {apply_mode}")
+
+    def _record_hook_delta(
+        self,
+        *,
+        layer_index: int,
+        hidden_states: Any,
+        token_slice: Any,
+        layer_heads: list[int],
+        before: Any,
+        after: Any,
+    ) -> None:
+        """Record a compact first-hit edit diagnostic for one hooked layer."""
+
+        if not self.debug_log_hook_delta or layer_index in self.hook_delta_by_layer:
             return None
-        if self.apply_to == "last_token":
-            return slice(seq_len - 1, seq_len)
-        if self.apply_to == "all_tokens":
-            return slice(0, seq_len)
-        raise ValueError(f"Unsupported apply_to mode: {self.apply_to}")
+        delta = (after - before).detach().float()
+        self.hook_delta_by_layer[layer_index] = {
+            "layer": int(layer_index),
+            "input_shape": [int(item) for item in hidden_states.shape],
+            "num_heads": int(len(layer_heads)),
+            "token_start": int(token_slice.start),
+            "token_stop": int(token_slice.stop),
+            "input_norm_before": float(before.detach().float().norm().item()),
+            "edit_norm": float(delta.norm().item()),
+            "input_norm_after": float(after.detach().float().norm().item()),
+            "max_abs_delta": float(delta.abs().max().item()) if delta.numel() else 0.0,
+        }
 
     def _register_hooks(self) -> None:
         """Register forward-pre hooks on selected decoder attention output projections."""
@@ -315,9 +402,10 @@ class ExpertSteeringController:
                 if not layer_heads:
                     return None
                 hidden_states = inputs[0]
-                token_slice = self._target_slice(hidden_states)
-                if token_slice is None:
+                target = self._target_slice(hidden_states)
+                if target is None:
                     return None
+                forward_kind, token_slice = target
                 if int(hidden_states.shape[-1]) != self.hidden_size:
                     raise RuntimeError(
                         f"Hidden size mismatch: hook saw {hidden_states.shape[-1]}, vector file expects {self.hidden_size}"
@@ -332,16 +420,34 @@ class ExpertSteeringController:
                     device=hidden_states.device,
                     dtype=hidden_states.dtype,
                 )
+                before = shaped[:, token_slice, :, :].clone() if self.debug_log_hook_delta else None
                 for head in layer_heads:
                     shaped[:, token_slice, head, :] = shaped[:, token_slice, head, :] + (
                         self.alpha * vectors[head]
                     )
+                if before is not None:
+                    after = shaped[:, token_slice, :, :]
+                    self._record_hook_delta(
+                        layer_index=layer_index,
+                        hidden_states=hidden_states,
+                        token_slice=token_slice,
+                        layer_heads=layer_heads,
+                        before=before,
+                        after=after,
+                    )
                 self.hook_call_count += 1
                 self.edited_token_count += len(layer_heads) * (token_slice.stop - token_slice.start)
+                if forward_kind == "prefill":
+                    self.prefill_hook_call_count += 1
+                    self.prefill_edited_token_count += len(layer_heads) * (token_slice.stop - token_slice.start)
+                else:
+                    self.decode_hook_call_count += 1
+                    self.decode_edited_token_count += len(layer_heads) * (token_slice.stop - token_slice.start)
                 if len(self.last_hook_shapes) < 8:
                     self.last_hook_shapes.append(
                         {
                             "layer": layer_index,
+                            "forward_kind": forward_kind,
                             "input_shape": [int(item) for item in hidden_states.shape],
                             "num_heads": len(layer_heads),
                             "token_start": int(token_slice.start),
@@ -367,6 +473,7 @@ class ExpertSteeringController:
         return {
             "vector_path": str(self.vector_path),
             "layers": list(self.requested_layers),
+            "vector_layers": list(self.vector_layers),
             "alpha": self.alpha,
             "k_heads": self.k_heads,
             "head_select": self.head_select,
@@ -374,11 +481,28 @@ class ExpertSteeringController:
             "enabled_experts": list(self.enabled_experts),
             "active_experts": list(self.active_experts),
             "active_head_count": active_head_count,
+            "active_heads_by_layer": {
+                str(layer): len(heads)
+                for layer, heads in sorted(self.active_heads_by_layer.items())
+            },
             "apply_to": self.apply_to,
             "steer_prefill": self.steer_prefill,
+            "steer_decode": self.steer_decode,
+            "prefill_apply_to": self.prefill_apply_to,
+            "decode_apply_to": self.decode_apply_to,
+            "debug_log_hook_delta": self.debug_log_hook_delta,
+            "debug_random_vector": self.debug_random_vector,
             "hook_call_count": self.hook_call_count,
             "edited_token_count": self.edited_token_count,
+            "prefill_hook_call_count": self.prefill_hook_call_count,
+            "decode_hook_call_count": self.decode_hook_call_count,
+            "prefill_edited_token_count": self.prefill_edited_token_count,
+            "decode_edited_token_count": self.decode_edited_token_count,
             "last_hook_shapes": list(self.last_hook_shapes),
+            "hook_delta_by_layer": {
+                str(layer): dict(values)
+                for layer, values in sorted(self.hook_delta_by_layer.items())
+            },
         }
 
 
