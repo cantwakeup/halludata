@@ -18,7 +18,6 @@ from expert_data.activation_cache import sha256_file, tensor_shape, utc_now_iso,
 from expert_data.image_resolver import CocoImageResolver
 from expert_data.io_utils import read_jsonl
 from expert_data.model_adapter import LlavaActivationAdapter, MockActivationAdapter
-from scripts.extract_activations import build_mock_adapter_result, mock_activation_to_grid, stack_activation_items
 
 
 REQUIRED_FIELDS = ("pair_id", "image_id", "subtype", "question", "factual_answer", "counterfactual_answer")
@@ -81,6 +80,36 @@ def torch_dtype(torch: Any, dtype_name: str) -> Any:
         "bfloat16": torch.bfloat16,
         "float32": torch.float32,
     }[str(dtype_name)]
+
+
+def mock_activation_to_grid(activation: Mapping[str, Any], adapter: MockActivationAdapter) -> list[list[list[float]]]:
+    """Convert mock layer-head vectors into a [layers, heads, head_dim] grid.
+
+    This helper intentionally lives in this script instead of importing from
+    ``scripts.extract_activations`` because some cloud environments install an
+    unrelated top-level ``scripts`` package, for example ROS tooling.
+    """
+
+    vectors = dict(activation.get("layer_head_vectors", {}))
+    return [
+        [
+            [float(value) for value in vectors[f"l{layer}_h{head}"]]
+            for head in range(adapter.num_heads)
+        ]
+        for layer in range(adapter.num_layers)
+    ]
+
+
+def stack_activation_items(items: list[Any], storage_dtype: str) -> Any:
+    """Stack per-row activation grids into a [N, L, H, D] torch tensor."""
+
+    if not items:
+        return []
+    torch = require_torch()
+    dtype = torch_dtype(torch, storage_dtype)
+    if isinstance(items[0], torch.Tensor):
+        return torch.stack(items, dim=0).to(dtype).cpu()
+    return torch.tensor(items, dtype=dtype)
 
 
 def validate_row(row: Mapping[str, Any], row_index: int) -> None:
