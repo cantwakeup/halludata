@@ -26,6 +26,8 @@ from expert_data.steering import (
 
 YES_WORDS = {"yes", "y", "true", "1"}
 NO_WORDS = {"no", "n", "false", "0"}
+YES_CANDIDATES = ("Yes", " yes", "YES", " yes")
+NO_CANDIDATES = ("No", " no", "NO", " no")
 
 
 def parse_args() -> argparse.Namespace:
@@ -174,6 +176,33 @@ def extract_yes_no(text: str) -> str | None:
     return None
 
 
+def single_token_ids(tokenizer: Any, candidates: Iterable[str]) -> list[int]:
+    """Return unique token IDs for candidates that encode as one token."""
+
+    token_ids: list[int] = []
+    for candidate in candidates:
+        ids = tokenizer.encode(candidate, add_special_tokens=False)
+        if len(ids) == 1 and int(ids[0]) not in token_ids:
+            token_ids.append(int(ids[0]))
+    if not token_ids:
+        raise RuntimeError(f"No single-token IDs found for candidates: {list(candidates)}")
+    return token_ids
+
+
+def yes_no_margin(logits: Any, yes_ids: list[int], no_ids: list[int]) -> dict[str, Any]:
+    """Compute max Yes/No logits and their first-token margin."""
+
+    yes_logit = float(logits[yes_ids].max().item())
+    no_logit = float(logits[no_ids].max().item())
+    margin = yes_logit - no_logit
+    return {
+        "yes_logit": yes_logit,
+        "no_logit": no_logit,
+        "margin": margin,
+        "prediction": "yes" if margin >= 0.0 else "no",
+    }
+
+
 def normalize_sample(row: Mapping[str, Any], index: int) -> dict[str, Any]:
     """Normalize common POPE/MME-style field names into one internal schema."""
 
@@ -285,6 +314,9 @@ class LlavaBenchmarkGenerator:
         self.model.to(self.device)
         self.model.eval()
         self.controller = controller
+        tokenizer = getattr(self.processor, "tokenizer", self.processor)
+        self.yes_token_ids = single_token_ids(tokenizer, YES_CANDIDATES)
+        self.no_token_ids = single_token_ids(tokenizer, NO_CANDIDATES)
 
     def _resolve_torch_dtype(self, dtype_name: str) -> Any:
         """Resolve a torch dtype string."""
@@ -327,18 +359,41 @@ class LlavaBenchmarkGenerator:
             raise FileNotFoundError("No image path and no --image-root resolver were provided")
         return self.resolver.resolve(sample["image_id"])
 
-    def generate(self, sample: Mapping[str, Any], mode: str) -> str:
+    def _prepare_controller(self, question: str, mode: str, sign: float) -> None:
+        """Configure and enable/disable the steering controller for one forward."""
+
+        if self.controller is None:
+            return
+        self.controller.set_context(question)
+        self.controller.set_sign(sign)
+        if mode == "steered" and float(sign) != 0.0:
+            self.controller.enable()
+        else:
+            self.controller.disable()
+
+    def first_token_margin(self, sample: Mapping[str, Any], *, mode: str, sign: float = 1.0) -> dict[str, Any]:
+        """Return first-token Yes/No logits and margin for one sample."""
+
+        image = self._Image.open(self.resolve_image_path(sample)).convert("RGB")
+        question = str(sample["question"])
+        prompt = build_llava_prefix_prompt(question)
+        self._prepare_controller(question, mode, sign)
+        inputs = self._inputs_to_device(self.processor(text=prompt, images=image, return_tensors="pt"))
+        with self._torch.inference_mode():
+            outputs = self.model(**inputs, use_cache=False)
+        if self.controller is not None:
+            self.controller.disable()
+        prompt_len = int(inputs["input_ids"].shape[1])
+        logits = outputs.logits[0, prompt_len - 1, :].detach().float().cpu()
+        return yes_no_margin(logits, self.yes_token_ids, self.no_token_ids)
+
+    def generate(self, sample: Mapping[str, Any], mode: str, sign: float = 1.0) -> str:
         """Generate one benchmark answer."""
 
         image = self._Image.open(self.resolve_image_path(sample)).convert("RGB")
         question = str(sample["question"])
         prompt = build_llava_prefix_prompt(question)
-        if self.controller is not None:
-            self.controller.set_context(question)
-            if mode == "steered":
-                self.controller.enable()
-            else:
-                self.controller.disable()
+        self._prepare_controller(question, mode, sign)
         inputs = self._inputs_to_device(self.processor(text=prompt, images=image, return_tensors="pt"))
         with self._torch.inference_mode():
             output_ids = self.model.generate(
@@ -385,6 +440,166 @@ def evaluate_mode(
     return predictions, compute_yesno_metrics(predictions, benchmark_name)
 
 
+def _safe_accuracy(rows: list[dict[str, Any]], pred_key: str) -> float | None:
+    """Return yes/no accuracy for combined steering rows."""
+
+    labeled = [row for row in rows if row.get("label") in {"yes", "no"}]
+    if not labeled:
+        return None
+    return sum(1 for row in labeled if row.get(pred_key) == row.get("label")) / len(labeled)
+
+
+def _safe_f1_yes(rows: list[dict[str, Any]], pred_key: str) -> float:
+    """Return positive-class F1 for combined steering rows."""
+
+    labeled = [row for row in rows if row.get("label") in {"yes", "no"}]
+    tp = sum(1 for row in labeled if row.get("label") == "yes" and row.get(pred_key) == "yes")
+    fp = sum(1 for row in labeled if row.get("label") == "no" and row.get(pred_key) == "yes")
+    fn = sum(1 for row in labeled if row.get("label") == "yes" and row.get(pred_key) != "yes")
+    precision = tp / (tp + fp) if (tp + fp) else 0.0
+    recall = tp / (tp + fn) if (tp + fn) else 0.0
+    return 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+
+
+def _yes_rate(rows: list[dict[str, Any]], pred_key: str) -> float:
+    """Return the fraction of rows predicted as yes."""
+
+    return sum(1 for row in rows if row.get(pred_key) == "yes") / len(rows) if rows else 0.0
+
+
+def yesno_bundle(rows: list[dict[str, Any]], *, pred_key: str, output_key: str, benchmark_name: str) -> dict[str, Any]:
+    """Compute yes/no metrics for fixed-positive steering rows."""
+
+    labeled = [row for row in rows if row.get("label") in {"yes", "no"}]
+    correct = sum(1 for row in labeled if row.get(pred_key) == row.get("label"))
+    tp = sum(1 for row in labeled if row.get("label") == "yes" and row.get(pred_key) == "yes")
+    fp = sum(1 for row in labeled if row.get("label") == "no" and row.get(pred_key) == "yes")
+    fn = sum(1 for row in labeled if row.get("label") == "yes" and row.get(pred_key) != "yes")
+    precision = tp / (tp + fp) if (tp + fp) else 0.0
+    recall = tp / (tp + fn) if (tp + fn) else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+    return {
+        "benchmark_name": benchmark_name,
+        "num_samples": len(rows),
+        "num_labeled_samples": len(labeled),
+        "accuracy": correct / len(labeled) if labeled else None,
+        "precision_yes": precision,
+        "recall_yes": recall,
+        "f1_yes": f1,
+        "yes_rate": _yes_rate(rows, pred_key),
+        "average_output_length": mean([len(str(row.get(output_key, "")).split()) for row in rows] or [0.0]),
+    }
+
+
+def summarize_fixed_steering_rows(
+    rows: list[dict[str, Any]],
+    *,
+    benchmark_name: str,
+    alpha: float,
+) -> dict[str, Any]:
+    """Summarize fixed-positive steering rows with first-token diagnostics."""
+
+    baseline_acc = _safe_accuracy(rows, "baseline_pred")
+    steered_acc = _safe_accuracy(rows, "steered_pred")
+    baseline_f1 = _safe_f1_yes(rows, "baseline_pred")
+    steered_f1 = _safe_f1_yes(rows, "steered_pred")
+    label_yes = [row["delta_margin"] for row in rows if row.get("label") == "yes"]
+    label_no = [row["delta_margin"] for row in rows if row.get("label") == "no"]
+    wrong_to_right = [
+        row for row in rows
+        if row.get("label") in {"yes", "no"}
+        and row.get("baseline_pred") != row.get("label")
+        and row.get("steered_pred") == row.get("label")
+    ]
+    right_to_wrong = [
+        row for row in rows
+        if row.get("label") in {"yes", "no"}
+        and row.get("baseline_pred") == row.get("label")
+        and row.get("steered_pred") != row.get("label")
+    ]
+    sign_counts = {
+        "num_pos_sign": sum(1 for row in rows if int(row.get("steer_sign", 0)) > 0),
+        "num_neg_sign": sum(1 for row in rows if int(row.get("steer_sign", 0)) < 0),
+        "num_zero_sign": sum(1 for row in rows if int(row.get("steer_sign", 0)) == 0),
+    }
+    return {
+        "benchmark_name": benchmark_name,
+        "num_samples": len(rows),
+        "steering_mode": "fixed_positive",
+        "alpha": float(alpha),
+        **sign_counts,
+        "avg_delta_margin_all": mean([row["delta_margin"] for row in rows] or [0.0]),
+        "avg_delta_margin_label_yes": mean(label_yes or [0.0]),
+        "avg_delta_margin_label_no": mean(label_no or [0.0]),
+        "wrong_to_right": len(wrong_to_right),
+        "right_to_wrong": len(right_to_wrong),
+        "yes_rate_baseline": _yes_rate(rows, "baseline_pred"),
+        "yes_rate_steered": _yes_rate(rows, "steered_pred"),
+        "accuracy_baseline": baseline_acc,
+        "accuracy_steered": steered_acc,
+        "delta_accuracy": (
+            steered_acc - baseline_acc
+            if baseline_acc is not None and steered_acc is not None else None
+        ),
+        "f1_baseline": baseline_f1,
+        "f1_steered": steered_f1,
+        "delta_f1": steered_f1 - baseline_f1,
+    }
+
+
+def evaluate_fixed_steering_mode(
+    generator: Any,
+    samples: list[dict[str, Any]],
+    *,
+    args: argparse.Namespace,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Run baseline and fixed-positive steered generation with first-token margin diagnostics."""
+
+    rows: list[dict[str, Any]] = []
+    for index, sample in enumerate(samples, start=1):
+        label = sample.get("label")
+        baseline_margin = generator.first_token_margin(sample, mode="baseline", sign=0.0)
+        baseline_output = generator.generate(sample, mode="baseline", sign=0.0)
+        baseline_pred = extract_yes_no(baseline_output)
+        steer_sign = 1
+        steered_margin = generator.first_token_margin(sample, mode="steered", sign=steer_sign)
+        steered_output = generator.generate(sample, mode="steered", sign=steer_sign)
+        steered_pred = extract_yes_no(steered_output)
+        rows.append(
+            {
+                "sample_id": sample["sample_id"],
+                "image_id": sample["image_id"],
+                "image_path": sample["image_path"],
+                "question": sample["question"],
+                "label": label,
+                "baseline_output": baseline_output,
+                "steered_output": steered_output,
+                "baseline_pred": baseline_pred,
+                "steered_pred": steered_pred,
+                "baseline_logit_pred": baseline_margin["prediction"],
+                "steered_logit_pred": steered_margin["prediction"],
+                "baseline_yes_logit": baseline_margin["yes_logit"],
+                "baseline_no_logit": baseline_margin["no_logit"],
+                "baseline_margin": baseline_margin["margin"],
+                "steered_yes_logit": steered_margin["yes_logit"],
+                "steered_no_logit": steered_margin["no_logit"],
+                "steered_margin": steered_margin["margin"],
+                "delta_margin": steered_margin["margin"] - baseline_margin["margin"],
+                "steer_sign": int(steer_sign),
+                "steer_alpha": float(args.steer_alpha),
+                "steering_mode": "fixed_positive",
+                "was_steered": True,
+            }
+        )
+        if int(args.progress_every) > 0 and index % int(args.progress_every) == 0:
+            print(f"[fixed-steering] processed {index}/{len(samples)} samples")
+    return rows, summarize_fixed_steering_rows(
+        rows,
+        benchmark_name=args.benchmark_name,
+        alpha=float(args.steer_alpha),
+    )
+
+
 def build_config(args: argparse.Namespace, samples: list[dict[str, Any]]) -> dict[str, Any]:
     """Build a serializable run config."""
 
@@ -410,6 +625,7 @@ def build_config(args: argparse.Namespace, samples: list[dict[str, Any]]) -> dic
             "prefill_apply_to": str(args.prefill_apply_to),
             "decode_apply_to": str(args.decode_apply_to),
             "debug_log_hook_delta": normalize_bool(args.debug_log_hook_delta),
+            "steering_mode": "fixed_positive",
         },
     }
 
@@ -467,6 +683,37 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
             )
             generator.controller = controller
         del model_probe
+
+    if args.steer_enable and args.adapter == "llava":
+        fixed_rows, fixed_metrics = evaluate_fixed_steering_mode(generator, samples, args=args)
+        baseline_metrics = yesno_bundle(
+            fixed_rows,
+            pred_key="baseline_pred",
+            output_key="baseline_output",
+            benchmark_name=args.benchmark_name,
+        )
+        steered_metrics = yesno_bundle(
+            fixed_rows,
+            pred_key="steered_pred",
+            output_key="steered_output",
+            benchmark_name=args.benchmark_name,
+        )
+        metrics: dict[str, Any] = {
+            "baseline": baseline_metrics,
+            "steered": steered_metrics,
+            "delta_accuracy": fixed_metrics["delta_accuracy"],
+            "fixed_steering": fixed_metrics,
+        }
+        if controller is not None:
+            metrics["steering_diagnostics"] = controller.summary()
+        config = build_config(args, samples)
+        if not args.dry_run:
+            write_jsonl(out_dir / "predictions.jsonl", fixed_rows)
+            write_json(out_dir / "metrics.json", metrics)
+            write_json(out_dir / "config.json", config)
+        elif controller is not None:
+            print(f"Dry-run steering diagnostics: {controller.summary()}")
+        return {"out_dir": out_dir, "metrics": metrics, "config": config}
 
     all_predictions: list[dict[str, Any]] = []
     baseline_predictions, baseline_metrics = evaluate_mode(

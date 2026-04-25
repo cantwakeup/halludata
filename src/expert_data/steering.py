@@ -187,6 +187,7 @@ class ExpertSteeringController:
         self.debug_random_seed = int(debug_random_seed)
         self.seed = int(seed)
         self.enabled = False
+        self.current_sign = 1.0
         self.hook_call_count = 0
         self.edited_token_count = 0
         self.prefill_hook_call_count = 0
@@ -230,7 +231,7 @@ class ExpertSteeringController:
         """Map each expert's layer-relative tensor rows back to original layer IDs."""
 
         indexed: dict[str, dict[int, Any]] = {}
-        for expert in VALID_EXPERTS:
+        for expert in self.enabled_experts:
             if expert not in vectors:
                 raise ValueError(f"Vector file is missing expert '{expert}'")
             tensor = vectors[expert].detach().cpu().float()
@@ -247,7 +248,7 @@ class ExpertSteeringController:
 
         generator = self._torch.Generator(device="cpu")
         generator.manual_seed(self.debug_random_seed)
-        for expert in VALID_EXPERTS:
+        for expert in self.enabled_experts:
             for layer in self.vector_layers:
                 self.vectors_by_expert_layer[expert][layer] = self._torch.randn(
                     self.num_heads,
@@ -315,6 +316,11 @@ class ExpertSteeringController:
         """Disable steering hooks without removing them."""
 
         self.enabled = False
+
+    def set_sign(self, sign: int | float) -> None:
+        """Set the signed steering multiplier used by subsequent forwards."""
+
+        self.current_sign = float(sign)
 
     def remove(self) -> None:
         """Remove all registered hooks from the model."""
@@ -398,6 +404,8 @@ class ExpertSteeringController:
             def hook(_module: Any, inputs: tuple[Any, ...]) -> tuple[Any, ...] | None:
                 if not self.enabled or not inputs:
                     return None
+                if float(self.current_sign) == 0.0:
+                    return None
                 layer_heads = self.active_heads_by_layer.get(layer_index)
                 if not layer_heads:
                     return None
@@ -423,7 +431,7 @@ class ExpertSteeringController:
                 before = shaped[:, token_slice, :, :].clone() if self.debug_log_hook_delta else None
                 for head in layer_heads:
                     shaped[:, token_slice, head, :] = shaped[:, token_slice, head, :] + (
-                        self.alpha * vectors[head]
+                        self.current_sign * self.alpha * vectors[head]
                     )
                 if before is not None:
                     after = shaped[:, token_slice, :, :]
@@ -475,6 +483,7 @@ class ExpertSteeringController:
             "layers": list(self.requested_layers),
             "vector_layers": list(self.vector_layers),
             "alpha": self.alpha,
+            "current_sign": self.current_sign,
             "k_heads": self.k_heads,
             "head_select": self.head_select,
             "router": self.router,

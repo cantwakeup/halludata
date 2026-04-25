@@ -54,6 +54,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prefill-apply-to", choices=["last_token", "all_tokens"], default="last_token")
     parser.add_argument("--decode-apply-to", choices=["last_token"], default="last_token")
     parser.add_argument("--debug-log-hook-delta", default="false")
+    parser.add_argument("--dataset", default="", help="Optional dataset split label stored in output rows.")
     return parser.parse_args()
 
 
@@ -272,6 +273,7 @@ def summarize(rows: list[dict[str, Any]], controller_summary: dict[str, Any], ar
     label_no = [row["delta_margin"] for row in rows if row.get("label") == "no"]
     return {
         "n": len(rows),
+        "steering_mode": "fixed_positive",
         "alpha": float(args.steer_alpha),
         "steer_prefill": normalize_bool(args.steer_prefill),
         "steer_decode": normalize_bool(args.steer_decode),
@@ -335,6 +337,7 @@ def main() -> int:
         )
 
         output_rows: list[dict[str, Any]] = []
+        dataset = str(args.dataset).strip() or Path(args.pope_file).stem.replace("coco_pope_", "")
         for index, sample in enumerate(samples, start=1):
             controller.set_context(str(sample["question"]))
             controller.disable()
@@ -347,6 +350,8 @@ def main() -> int:
                 device=args.device,
                 compute_dtype=compute_dtype,
             )
+            baseline = yes_no_margin(baseline_logits, yes_ids, no_ids)
+            controller.set_sign(1.0)
             controller.enable()
             steered_logits = first_token_logits(
                 sample,
@@ -358,23 +363,25 @@ def main() -> int:
                 compute_dtype=compute_dtype,
             )
             controller.disable()
-            baseline = yes_no_margin(baseline_logits, yes_ids, no_ids)
             steered = yes_no_margin(steered_logits, yes_ids, no_ids)
             label = sample.get("label")
             output_rows.append(
                 {
+                    "dataset": dataset,
                     "image": sample["image"],
                     "question": sample["question"],
                     "label": label,
                     "baseline_yes_logit": baseline["yes_logit"],
                     "baseline_no_logit": baseline["no_logit"],
                     "baseline_margin": baseline["margin"],
+                    "baseline_logit_pred": baseline["prediction"],
                     "steered_yes_logit": steered["yes_logit"],
                     "steered_no_logit": steered["no_logit"],
                     "steered_margin": steered["margin"],
-                    "delta_margin": steered["margin"] - baseline["margin"],
-                    "baseline_logit_pred": baseline["prediction"],
                     "steered_logit_pred": steered["prediction"],
+                    "delta_margin": steered["margin"] - baseline["margin"],
+                    "baseline_correct": baseline["prediction"] == label if label in {"yes", "no"} else None,
+                    "steered_correct": steered["prediction"] == label if label in {"yes", "no"} else None,
                     "is_baseline_correct": baseline["prediction"] == label if label in {"yes", "no"} else None,
                     "is_steered_correct": steered["prediction"] == label if label in {"yes", "no"} else None,
                 }
