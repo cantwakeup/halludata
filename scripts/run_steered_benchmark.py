@@ -522,6 +522,8 @@ def summarize_fixed_steering_rows(
         "num_neg_sign": sum(1 for row in rows if int(row.get("steer_sign", 0)) < 0),
         "num_zero_sign": sum(1 for row in rows if int(row.get("steer_sign", 0)) == 0),
     }
+    changed_text = sum(1 for row in rows if bool(row.get("changed_text")))
+    changed_pred = sum(1 for row in rows if bool(row.get("changed_pred")))
     return {
         "benchmark_name": benchmark_name,
         "num_samples": len(rows),
@@ -544,6 +546,9 @@ def summarize_fixed_steering_rows(
         "f1_baseline": baseline_f1,
         "f1_steered": steered_f1,
         "delta_f1": steered_f1 - baseline_f1,
+        "changed_text": changed_text,
+        "changed_pred": changed_pred,
+        "avg_output_length": mean([len(str(row.get("steered_output", "")).split()) for row in rows] or [0.0]),
     }
 
 
@@ -565,9 +570,12 @@ def evaluate_fixed_steering_mode(
         steered_margin = generator.first_token_margin(sample, mode="steered", sign=steer_sign)
         steered_output = generator.generate(sample, mode="steered", sign=steer_sign)
         steered_pred = extract_yes_no(steered_output)
+        changed_text = baseline_output != steered_output
+        changed_pred = baseline_pred != steered_pred
         rows.append(
             {
                 "sample_id": sample["sample_id"],
+                "image": str(sample.get("raw", {}).get("image", sample.get("image_path", sample["image_id"]))),
                 "image_id": sample["image_id"],
                 "image_path": sample["image_path"],
                 "question": sample["question"],
@@ -589,6 +597,8 @@ def evaluate_fixed_steering_mode(
                 "steer_alpha": float(args.steer_alpha),
                 "steering_mode": "fixed_positive",
                 "was_steered": True,
+                "changed_text": changed_text,
+                "changed_pred": changed_pred,
             }
         )
         if int(args.progress_every) > 0 and index % int(args.progress_every) == 0:
@@ -703,6 +713,21 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
             "steered": steered_metrics,
             "delta_accuracy": fixed_metrics["delta_accuracy"],
             "fixed_steering": fixed_metrics,
+            "accuracy_baseline": fixed_metrics["accuracy_baseline"],
+            "accuracy_steered": fixed_metrics["accuracy_steered"],
+            "precision_yes": steered_metrics.get("precision_yes"),
+            "recall_yes": steered_metrics.get("recall_yes"),
+            "f1_yes": steered_metrics.get("f1_yes"),
+            "yes_rate_baseline": fixed_metrics["yes_rate_baseline"],
+            "yes_rate_steered": fixed_metrics["yes_rate_steered"],
+            "wrong_to_right": fixed_metrics["wrong_to_right"],
+            "right_to_wrong": fixed_metrics["right_to_wrong"],
+            "avg_delta_margin_all": fixed_metrics["avg_delta_margin_all"],
+            "avg_delta_margin_label_yes": fixed_metrics["avg_delta_margin_label_yes"],
+            "avg_delta_margin_label_no": fixed_metrics["avg_delta_margin_label_no"],
+            "changed_pred": fixed_metrics["changed_pred"],
+            "changed_text": fixed_metrics["changed_text"],
+            "avg_output_length": fixed_metrics["avg_output_length"],
         }
         if controller is not None:
             metrics["steering_diagnostics"] = controller.summary()

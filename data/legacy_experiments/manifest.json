@@ -1,0 +1,88 @@
+{
+  "created_at": "2026-04-26",
+  "purpose": "Manifest-only archive for halludata experiments that predate the AFTER-style v1 pipeline. No old files were moved, deleted, or overwritten.",
+  "still_in_use": false,
+  "artifacts": [
+    {
+      "name": "original_fact_counterfact_pair_bank",
+      "paths": [
+        "data/outputs/fact_index_v0.jsonl",
+        "data/outputs/atomic_facts_v0.jsonl",
+        "data/outputs/pairs_unbalanced_v0.jsonl",
+        "data/outputs/pairs_balanced_v0.jsonl",
+        "data/outputs/pair_stats_v0.json",
+        "data/outputs/cat_neg_bank_v2.json",
+        "data/outputs/shell_bank_v1.json"
+      ],
+      "use": "COCO fact-counterfact pair rendering baseline.",
+      "still_in_use": false
+    },
+    {
+      "name": "original_image_level_split",
+      "paths": [
+        "data/outputs/splits/v0_mini_seed42/pairs_train.jsonl",
+        "data/outputs/splits/v0_mini_seed42/pairs_val.jsonl",
+        "data/outputs/splits/v0_mini_seed42/pairs_test.jsonl",
+        "data/outputs/splits/v0_mini_seed42/split_assignments.jsonl",
+        "data/outputs/splits/v0_mini_seed42/split_stats.json",
+        "data/outputs/splits/v0_mini_seed42/dataset_manifest.json"
+      ],
+      "use": "Leakage-safe split for the original v0-mini pair bank.",
+      "still_in_use": false
+    },
+    {
+      "name": "original_llava_activation_caches",
+      "paths": [
+        "data/outputs/activations/llava_v15_7b/v0_mini_seed42/train/merged",
+        "data/outputs/activations/llava_v15_7b/v0_mini_seed42/val/merged",
+        "data/outputs/activations/llava_v15_7b/v0_mini_seed42/test/merged"
+      ],
+      "shapes": {
+        "train": [658, 32, 32, 128],
+        "val": [391, 32, 32, 128],
+        "test": [386, 32, 32, 128]
+      },
+      "use": "Original teacher-forced LLaVA activation caches.",
+      "still_in_use": false
+    },
+    {
+      "name": "original_expert_vectors",
+      "paths": [
+        "data/outputs/steering/expert_vectors.pt",
+        "data/outputs/steering/expert_vectors.stats.json"
+      ],
+      "use": "Typed cat/attr/rel vector smoke tests.",
+      "still_in_use": false
+    },
+    {
+      "name": "balanced_cat_truthfulness",
+      "paths": [
+        "data/outputs/pair_banks/cat_truthfulness_train.jsonl",
+        "data/outputs/pair_banks/cat_truthfulness_val.jsonl",
+        "data/outputs/pair_banks/cat_truthfulness_test.jsonl",
+        "data/outputs/activations/cat_truthfulness_train.pt",
+        "data/outputs/activations/cat_truthfulness_val.pt",
+        "data/outputs/activations/cat_truthfulness_test.pt",
+        "data/outputs/steering/cat_truth_vector.pt",
+        "data/outputs/steering/cat_truth_vector.stats.json"
+      ],
+      "use": "Balanced present/absent cat truthfulness vector test.",
+      "key_observation": "present_absent_cosine was strongly negative, so a single static cat truthfulness vector was not supported.",
+      "still_in_use": false
+    },
+    {
+      "name": "pope_smoke_and_margin_debug",
+      "paths": [
+        "data/outputs/runs/",
+        "data/outputs/debug/cat_truth_pope_random500_margin_alpha4.jsonl",
+        "data/outputs/debug/cat_truth_pope_random500_margin_alpha4.summary.json"
+      ],
+      "use": "POPE smoke runs and first-token margin diagnostics for legacy vectors.",
+      "still_in_use": false
+    }
+  ],
+  "new_experiment_roots": {
+    "after_style_pairs": "data/after_style_v1/",
+    "after_style_outputs": "data/outputs_after_style_v1/"
+  }
+}

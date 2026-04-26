@@ -30,6 +30,9 @@ data/outputs/*.jsonl
 data/outputs/**/*.json
 data/outputs/**/*.jsonl
 data/outputs/**/*.pt
+data/after_style_v1/**/*.json
+data/after_style_v1/**/*.jsonl
+data/outputs_after_style_v1/
 
 # Real datasets and large local assets
 data/raw/
