@@ -67,3 +67,7 @@ These legacy artifacts are preserved for comparison and ablation only. The AFTER
 - Pair bank: `data/after_style_v1/`
 - New outputs: `data/outputs_after_style_v1/`
 
+The AFTER-template v1 experiment writes only to:
+
+- Pair bank: `data/after_template_v1/`
+- New outputs: `data/outputs_after_template_v1/`

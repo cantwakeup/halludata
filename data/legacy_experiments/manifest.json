@@ -83,6 +83,8 @@
   ],
   "new_experiment_roots": {
     "after_style_pairs": "data/after_style_v1/",
-    "after_style_outputs": "data/outputs_after_style_v1/"
+    "after_style_outputs": "data/outputs_after_style_v1/",
+    "after_template_pairs": "data/after_template_v1/",
+    "after_template_outputs": "data/outputs_after_template_v1/"
   }
 }

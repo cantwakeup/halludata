@@ -95,6 +95,13 @@ def build_llava_prompt(question: str, response: str) -> str:
     return f"USER: <image>\n{question}\nASSISTANT: {response}"
 
 
+def build_llava_prefix_prompt(prompt_text: str, *, include_image: bool) -> str:
+    """Build a prompt-only LLaVA prefix for activation extraction without generation."""
+
+    image_line = "<image>\n" if include_image else ""
+    return f"USER: {image_line}{prompt_text}\nASSISTANT:"
+
+
 def find_decoder_layers(model: Any) -> Any:
     """Find decoder layers in common LLaVA/LLaMA-style Hugging Face model layouts."""
 
@@ -290,9 +297,21 @@ class LlavaActivationAdapter(BaseActivationAdapter):
 
         if not str(response).strip():
             raise ValueError("response must be non-empty for teacher-forced activation extraction.")
-        image = self._Image.open(image_path).convert("RGB")
         prompt = build_llava_prompt(question, response)
-        inputs = self.processor(text=prompt, images=image, return_tensors="pt")
+        return self._run_prompt(prompt=prompt, image_path=image_path, include_image=True)
+
+    def _run_prompt(self, prompt: str, image_path: str | None = None, include_image: bool = True) -> tuple[Any, int]:
+        """Run one prompt-only branch and return [layers, heads, head_dim] activations."""
+
+        if not str(prompt).strip():
+            raise ValueError("prompt must be non-empty for activation extraction.")
+        if include_image:
+            if not image_path:
+                raise ValueError("image_path is required when include_image=True")
+            image = self._Image.open(image_path).convert("RGB")
+            inputs = self.processor(text=prompt, images=image, return_tensors="pt")
+        else:
+            inputs = self.processor(text=prompt, return_tensors="pt")
         inputs = self._inputs_to_device(inputs)
         target_idx = self._target_token_index(inputs)
         self._current_target_idx = target_idx
@@ -306,6 +325,41 @@ class LlavaActivationAdapter(BaseActivationAdapter):
             raise RuntimeError(f"Missing hooked activations for decoder layers: {missing_layers[:5]}")
         stacked = self._torch.stack([self._layer_outputs[index] for index in range(len(self.decoder_layers))], dim=0)
         return stacked.to("cpu").to(self.storage_dtype), target_idx
+
+    def encode_prompt_pair(
+        self,
+        image_path: str,
+        visual_prompt: str,
+        trusted_prompt: str,
+        trusted_input_mode: str = "text_only",
+        pair_id: str | None = None,
+        subtype: str | None = None,
+    ) -> dict[str, Any]:
+        """Encode visual-query and trusted-text branches for AFTER-template steering."""
+
+        del pair_id, subtype
+        mode = str(trusted_input_mode).strip().lower()
+        if mode not in {"text_only", "image_with_fact"}:
+            raise ValueError("trusted_input_mode must be one of: text_only, image_with_fact")
+        visual_text = build_llava_prefix_prompt(visual_prompt, include_image=True)
+        trusted_text = build_llava_prefix_prompt(trusted_prompt, include_image=(mode == "image_with_fact"))
+        z_visual, target_visual = self._run_prompt(prompt=visual_text, image_path=image_path, include_image=True)
+        z_text, target_text = self._run_prompt(
+            prompt=trusted_text,
+            image_path=image_path if mode == "image_with_fact" else None,
+            include_image=(mode == "image_with_fact"),
+        )
+        return {
+            "z_visual": z_visual,
+            "z_text": z_text,
+            "meta": {
+                "num_layers": int(z_visual.shape[0]),
+                "num_heads": int(z_visual.shape[1]),
+                "head_dim": int(z_visual.shape[2]),
+                "target_token_index_visual": int(target_visual),
+                "target_token_index_text": int(target_text),
+            },
+        }
 
     def encode_pair(
         self,
