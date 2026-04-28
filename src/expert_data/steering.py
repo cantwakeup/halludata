@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import random
 from pathlib import Path
 from typing import Any, Mapping
@@ -87,7 +88,7 @@ def normalize_bool(value: str | bool) -> bool:
 def route_question_to_experts(question: str, router: str, enabled_experts: tuple[str, ...]) -> tuple[str, ...]:
     """Route a benchmark question to one or more enabled expert vectors."""
 
-    enabled = tuple(expert for expert in enabled_experts if expert in VALID_EXPERTS)
+    enabled = tuple(str(expert) for expert in enabled_experts if str(expert))
     if not enabled:
         raise ValueError("At least one enabled expert must be provided")
     router_name = str(router).strip().lower()
@@ -95,7 +96,13 @@ def route_question_to_experts(question: str, router: str, enabled_experts: tuple
         return enabled
     if router_name.startswith("force_"):
         expert = router_name.replace("force_", "", 1)
-        return (expert,) if expert in enabled else enabled
+        if expert in enabled:
+            return (expert,)
+        if expert == "rel":
+            rel_like = tuple(item for item in enabled if item == "rel" or item.startswith("rel_"))
+            if rel_like:
+                return rel_like
+        return enabled
     if router_name != "rule":
         raise ValueError(f"Unsupported steering router: {router}")
 
@@ -158,6 +165,8 @@ class ExpertSteeringController:
         debug_log_hook_delta: bool = False,
         debug_random_vector: bool = False,
         debug_random_seed: int = 42,
+        head_map_path: str | Path | None = None,
+        expert_key: str | None = None,
         seed: int = 42,
     ) -> None:
         """Load expert vectors, select heads, and register disabled hooks on a model."""
@@ -174,9 +183,14 @@ class ExpertSteeringController:
         self.k_heads = int(k_heads)
         self.head_select = str(head_select)
         self.router = str(router)
-        self.enabled_experts = tuple(str(expert) for expert in enabled_experts if str(expert) in VALID_EXPERTS)
+        self.enabled_experts = tuple(str(expert) for expert in enabled_experts if str(expert))
         if not self.enabled_experts:
-            raise ValueError("enabled_experts must include at least one of cat, attr, rel")
+            raise ValueError("enabled_experts must include at least one vector key")
+        self.head_map_path = Path(head_map_path) if head_map_path not in (None, "") else None
+        self.expert_key = str(expert_key).strip() if expert_key not in (None, "") else None
+        if self.expert_key and self.expert_key not in self.enabled_experts:
+            self.enabled_experts = (self.expert_key,)
+        self.expert_head_map = self._load_head_map(self.head_map_path, self.expert_key)
         self.apply_to = str(apply_to)
         self.steer_prefill = bool(steer_prefill)
         self.steer_decode = bool(steer_decode)
@@ -199,7 +213,7 @@ class ExpertSteeringController:
 
         payload = self._load_vector_payload(self.vector_path)
         self.vector_layers = [int(layer) for layer in payload["layers"]]
-        self.requested_layers = parse_layer_spec(layers)
+        self.requested_layers = self._resolve_requested_layers(layers)
         missing_layers = [layer for layer in self.requested_layers if layer not in self.vector_layers]
         if missing_layers:
             raise ValueError(f"Requested layers are missing from vector file: {missing_layers}")
@@ -226,6 +240,39 @@ class ExpertSteeringController:
             return self._torch.load(path, map_location="cpu", weights_only=False)
         except TypeError:
             return self._torch.load(path, map_location="cpu")
+
+    def _load_head_map(self, path: Path | None, expert_key: str | None) -> dict[int, list[int]] | None:
+        """Load an expert-specific head map from a mining JSON file."""
+
+        if self.head_select != "expert_map":
+            return None
+        if path is None:
+            raise ValueError("--steer-head-map is required when head_select='expert_map'")
+        if expert_key is None:
+            raise ValueError("--steer-expert-key is required when head_select='expert_map'")
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        if expert_key not in payload:
+            raise ValueError(f"Head map {path} does not contain expert key '{expert_key}'")
+        heads_by_layer: dict[int, list[int]] = {}
+        for row in payload[expert_key]:
+            if not isinstance(row, (list, tuple)) or len(row) < 2:
+                raise ValueError(f"Invalid head-map row for {expert_key}: {row!r}")
+            layer = int(row[0])
+            head = int(row[1])
+            heads_by_layer.setdefault(layer, []).append(head)
+        if not heads_by_layer:
+            raise ValueError(f"Head map for expert key '{expert_key}' is empty")
+        return {layer: sorted(set(heads)) for layer, heads in sorted(heads_by_layer.items())}
+
+    def _resolve_requested_layers(self, layers: str | list[int] | tuple[int, ...]) -> list[int]:
+        """Resolve requested layers, allowing expert maps to infer the hook layers."""
+
+        if self.head_select == "expert_map":
+            if self.expert_head_map is None:
+                raise ValueError("expert head map must be loaded before resolving layers")
+            return sorted(self.expert_head_map)
+        return parse_layer_spec(layers)
 
     def _index_vectors(self, vectors: Mapping[str, Any]) -> dict[str, dict[int, Any]]:
         """Map each expert's layer-relative tensor rows back to original layer IDs."""
@@ -276,6 +323,14 @@ class ExpertSteeringController:
 
         if self.head_select == "all":
             return {int(layer): list(range(self.num_heads)) for layer in self.requested_layers}
+        if self.head_select == "expert_map":
+            if self.expert_head_map is None:
+                raise ValueError("expert head map is not loaded")
+            return {
+                int(layer): list(heads)
+                for layer, heads in self.expert_head_map.items()
+                if int(layer) in self.requested_layers
+            }
         all_pairs = [(int(layer), int(head)) for layer in self.requested_layers for head in range(self.num_heads)]
         if self.head_select == "random":
             rng = random.Random(self.seed)
@@ -486,6 +541,8 @@ class ExpertSteeringController:
             "current_sign": self.current_sign,
             "k_heads": self.k_heads,
             "head_select": self.head_select,
+            "head_map_path": str(self.head_map_path) if self.head_map_path else "",
+            "expert_key": self.expert_key or "",
             "router": self.router,
             "enabled_experts": list(self.enabled_experts),
             "active_experts": list(self.active_experts),

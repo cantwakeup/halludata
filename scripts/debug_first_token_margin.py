@@ -47,7 +47,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--steer-router", choices=["no_filter", "force_cat", "force_attr", "force_rel", "rule"], default="force_cat")
     parser.add_argument("--steer-enabled-experts", default="cat")
     parser.add_argument("--steer-k-heads", type=int, default=64)
-    parser.add_argument("--steer-head-select", choices=["norm", "random", "all"], default="norm")
+    parser.add_argument("--steer-head-select", choices=["norm", "random", "all", "expert_map"], default="norm")
+    parser.add_argument("--steer-head-map", default="", help="Head-map JSON for --steer-head-select expert_map.")
+    parser.add_argument("--steer-expert-key", default="", help="Vector/head-map expert key for expert_map steering.")
     parser.add_argument("--steer-alpha", type=float, default=4.0)
     parser.add_argument("--steer-prefill", default="true")
     parser.add_argument("--steer-decode", default="false")
@@ -327,6 +329,8 @@ def main() -> int:
             alpha=float(args.steer_alpha),
             k_heads=int(args.steer_k_heads),
             head_select=str(args.steer_head_select),
+            head_map_path=resolve_project_path(args.steer_head_map) if str(args.steer_head_map).strip() else None,
+            expert_key=str(args.steer_expert_key).strip() or None,
             router=str(args.steer_router),
             enabled_experts=tuple(parse_csv_items(args.steer_enabled_experts)),
             steer_prefill=normalize_bool(args.steer_prefill),

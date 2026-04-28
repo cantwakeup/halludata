@@ -54,7 +54,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--steer-layers", default="10-20", help="Layers to hook, e.g. 10-20.")
     parser.add_argument("--steer-alpha", type=float, default=1.0, help="Additive steering strength.")
     parser.add_argument("--steer-k-heads", type=int, default=64, help="Global top-K layer-head pairs.")
-    parser.add_argument("--steer-head-select", choices=["norm", "random", "all"], default="norm")
+    parser.add_argument("--steer-head-select", choices=["norm", "random", "all", "expert_map"], default="norm")
+    parser.add_argument("--steer-head-map", default="", help="Head-map JSON for --steer-head-select expert_map.")
+    parser.add_argument("--steer-expert-key", default="", help="Vector/head-map expert key for expert_map steering.")
     parser.add_argument("--steer-router", choices=["no_filter", "force_cat", "force_attr", "force_rel", "rule"], default="no_filter")
     parser.add_argument("--steer-enabled-experts", default="cat,attr,rel", help="Comma-separated experts.")
     parser.add_argument("--steer-prefill", default="false", help="Whether to edit prompt/prefill tokens.")
@@ -630,6 +632,8 @@ def build_config(args: argparse.Namespace, samples: list[dict[str, Any]]) -> dic
             "alpha": float(args.steer_alpha),
             "k_heads": int(args.steer_k_heads),
             "head_select": str(args.steer_head_select),
+            "head_map": str(resolve_optional_project_path(args.steer_head_map) or ""),
+            "expert_key": str(args.steer_expert_key),
             "router": str(args.steer_router),
             "enabled_experts": parse_csv_items(args.steer_enabled_experts),
             "apply_to": str(args.steer_apply_to),
@@ -685,6 +689,8 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
                 alpha=float(args.steer_alpha),
                 k_heads=int(args.steer_k_heads),
                 head_select=str(args.steer_head_select),
+                head_map_path=resolve_optional_project_path(args.steer_head_map),
+                expert_key=str(args.steer_expert_key).strip() or None,
                 router=str(args.steer_router),
                 enabled_experts=tuple(parse_csv_items(args.steer_enabled_experts)),
                 apply_to=str(args.steer_apply_to),

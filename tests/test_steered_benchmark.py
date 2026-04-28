@@ -45,6 +45,8 @@ class SteeredBenchmarkTest(unittest.TestCase):
         self.assertEqual(route_question_to_experts("Is the cup left of the plate?", "rule", ("cat", "attr", "rel")), ("rel",))
         self.assertEqual(route_question_to_experts("Does image contain a bus?", "rule", ("cat", "attr", "rel")), ("cat",))
         self.assertEqual(route_question_to_experts("Describe this.", "no_filter", ("cat", "attr", "rel")), ("cat", "attr", "rel"))
+        self.assertEqual(route_question_to_experts("Describe this.", "no_filter", ("rel_all",)), ("rel_all",))
+        self.assertEqual(route_question_to_experts("Describe this.", "force_rel", ("rel_all",)), ("rel_all",))
 
     def test_mock_benchmark_writes_baseline_and_steered_metrics(self) -> None:
         """Mock benchmark mode should produce predictions, metrics, and config files."""

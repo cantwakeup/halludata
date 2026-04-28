@@ -36,6 +36,9 @@ data/outputs_after_style_v1/
 data/after_template_v1/**/*.json
 data/after_template_v1/**/*.jsonl
 data/outputs_after_template_v1/
+data/after_template_rel_v2/**/*.json
+data/after_template_rel_v2/**/*.jsonl
+data/outputs_after_template_rel_v2/
 data/benchmarks/mme_hallucination/
 
 # Real datasets and large local assets
