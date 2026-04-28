@@ -290,7 +290,10 @@ class LlavaBenchmarkGenerator:
             except ImportError:
                 LlavaForConditionalGeneration = None
         except Exception as exc:
-            raise RuntimeError("LLaVA benchmark generation requires working torch, transformers, and Pillow.") from exc
+            raise RuntimeError(
+                "LLaVA benchmark generation requires working torch, transformers, and Pillow. "
+                f"Import failed with {type(exc).__name__}: {exc}"
+            ) from exc
 
         self._torch = torch
         self._Image = Image
