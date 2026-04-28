@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# AFTER-template expert steering sweep on the MME yes/no hallucination subset.
+#
+# Expected prepared inputs:
+#   python scripts/prepare_mme_from_parquet.py \
+#     --parquet-dir /home/huiwei/sy/benchmarks/MME \
+#     --out-dir data/benchmarks/mme_hallucination \
+#     --overwrite
+
+MODEL_PATH="${MODEL_PATH:-/home/huiwei/sy/models/llava-1.5-7b-hf}"
+BENCH_ROOT="${BENCH_ROOT:-data/benchmarks/mme_hallucination}"
+IMAGE_ROOT="${IMAGE_ROOT:-${BENCH_ROOT}/images}"
+VECTOR_PATH="${VECTOR_PATH:-data/outputs_after_template_v1/steering/after_template_expert_vectors.pt}"
+RUN_ROOT="${RUN_ROOT:-data/outputs_after_template_v1/mme_runs}"
+GPU="${GPU:-0}"
+LIMIT="${LIMIT:-0}"
+ALPHAS="${ALPHAS:-0.25 0.5 0.75 1 1.5 2}"
+CATEGORIES="${CATEGORIES:-existence count color position}"
+
+expert_for_category() {
+  case "$1" in
+    existence) echo "cat" ;;
+    count) echo "attr" ;;
+    color) echo "attr" ;;
+    position) echo "rel" ;;
+    *) echo "cat" ;;
+  esac
+}
+
+router_for_expert() {
+  case "$1" in
+    cat) echo "force_cat" ;;
+    attr) echo "force_attr" ;;
+    rel) echo "force_rel" ;;
+    *) echo "no_filter" ;;
+  esac
+}
+
+for category in $CATEGORIES; do
+  data_file="${BENCH_ROOT}/${category}.jsonl"
+  if [[ ! -f "$data_file" ]]; then
+    echo "Missing prepared MME file: $data_file" >&2
+    echo "Run scripts/prepare_mme_from_parquet.py first." >&2
+    exit 1
+  fi
+
+  expert="$(expert_for_category "$category")"
+  router="$(router_for_expert "$expert")"
+  benchmark_name="mme_${category}_after_template"
+
+  CUDA_VISIBLE_DEVICES="$GPU" python scripts/run_steered_benchmark.py \
+    --benchmark-data "$data_file" \
+    --benchmark-name "$benchmark_name" \
+    --out-dir "$RUN_ROOT/$category/baseline" \
+    --adapter llava \
+    --model-id "$MODEL_PATH" \
+    --image-root "$IMAGE_ROOT" \
+    --device cuda:0 \
+    --compute-dtype bfloat16 \
+    --limit "$LIMIT" \
+    --progress-every 20 \
+    --overwrite
+
+  for alpha in $ALPHAS; do
+    CUDA_VISIBLE_DEVICES="$GPU" python scripts/run_steered_benchmark.py \
+      --benchmark-data "$data_file" \
+      --benchmark-name "$benchmark_name" \
+      --out-dir "$RUN_ROOT/$category/${expert}_alpha${alpha}" \
+      --adapter llava \
+      --model-id "$MODEL_PATH" \
+      --image-root "$IMAGE_ROOT" \
+      --device cuda:0 \
+      --compute-dtype bfloat16 \
+      --limit "$LIMIT" \
+      --progress-every 20 \
+      --steer-enable \
+      --steer-vector-path "$VECTOR_PATH" \
+      --steer-layers 10-20 \
+      --steer-alpha "$alpha" \
+      --steer-k-heads 64 \
+      --steer-head-select norm \
+      --steer-router "$router" \
+      --steer-enabled-experts "$expert" \
+      --steer-prefill true \
+      --steer-decode true \
+      --steer-apply-to last_token \
+      --prefill-apply-to last_token \
+      --decode-apply-to last_token \
+      --overwrite
+  done
+done
+
+python scripts/summarize_mme_after_template_results.py \
+  --runs-root "$RUN_ROOT" \
+  --dataset-root "$BENCH_ROOT" \
+  --output "$RUN_ROOT/REPORT.md"
