@@ -43,6 +43,7 @@ data/after_template_disjoint_v1/**/*.json
 data/after_template_disjoint_v1/**/*.jsonl
 data/outputs_after_template_disjoint_v1/
 data/benchmarks/mme_hallucination/
+data/benchmarks/amber_hallucination/
 
 # Real datasets and large local assets
 data/raw/
