@@ -18,7 +18,17 @@ from expert_data.steering import parse_layer_spec
 
 
 EXPERT_TYPES = ("cat", "attr", "rel")
-SUBTYPES = ("cat_present", "cat_absent", "attr_count", "attr_color", "rel_spatial")
+SUBTYPES = (
+    "cat_present",
+    "cat_absent",
+    "attr_count",
+    "attr_color",
+    "rel_spatial",
+    "rel_left",
+    "rel_right",
+    "rel_above",
+    "rel_below",
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -237,6 +247,8 @@ def main() -> int:
             "cosine_diagnostics": {
                 "cat_present_cat_absent": cosine_flat(subtype_vectors["cat_present"], subtype_vectors["cat_absent"]),
                 "attr_count_attr_color": cosine_flat(subtype_vectors["attr_count"], subtype_vectors["attr_color"]),
+                "rel_left_rel_right": cosine_flat(subtype_vectors["rel_left"], subtype_vectors["rel_right"]),
+                "rel_above_rel_below": cosine_flat(subtype_vectors["rel_above"], subtype_vectors["rel_below"]),
                 "cat_attr": cosine_flat(raw_vectors["cat"], raw_vectors["attr"]),
                 "cat_rel": cosine_flat(raw_vectors["cat"], raw_vectors["rel"]),
                 "attr_rel": cosine_flat(raw_vectors["attr"], raw_vectors["rel"]),
