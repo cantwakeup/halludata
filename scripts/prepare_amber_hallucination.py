@@ -257,6 +257,128 @@ def ensure_output_ready(out_dir: Path, categories: set[str], overwrite: bool) ->
     out_dir.mkdir(parents=True, exist_ok=True)
 
 
+def load_official_amber_annotations(amber_root: Path) -> dict[int, dict[str, Any]]:
+    """Load official AMBER annotations keyed by question id if present."""
+
+    annotation_path = amber_root / "data" / "annotations.json"
+    if not annotation_path.exists():
+        return {}
+    rows = read_json_or_jsonl(annotation_path)
+    annotations: dict[int, dict[str, Any]] = {}
+    for row in rows:
+        try:
+            question_id = int(row.get("id"))
+        except (TypeError, ValueError):
+            continue
+        annotations[question_id] = row
+    return annotations
+
+
+def official_query_file(amber_root: Path, category: str) -> Path:
+    """Return the official AMBER discriminative query file for a category."""
+
+    return amber_root / "data" / "query" / f"query_discriminative-{category}.json"
+
+
+def build_official_amber_samples(
+    *,
+    amber_root: Path,
+    image_root: Path,
+    categories: set[str],
+    image_index: Mapping[str, Path],
+    max_rows_per_category: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any]] | None:
+    """Build samples from the official AMBER query/annotation split schema."""
+
+    annotations_by_id = load_official_amber_annotations(amber_root)
+    if not annotations_by_id:
+        return None
+    available_files = {
+        category: official_query_file(amber_root, category)
+        for category in DEFAULT_CATEGORIES
+        if official_query_file(amber_root, category).exists()
+    }
+    if not available_files:
+        return None
+
+    samples: list[dict[str, Any]] = []
+    per_category_counts: Counter[str] = Counter()
+    answer_counts: dict[str, Counter[str]] = defaultdict(Counter)
+    source_file_counts: Counter[str] = Counter()
+    skipped: Counter[str] = Counter()
+
+    for category in sorted(categories):
+        query_path = available_files.get(category)
+        if query_path is None:
+            skipped[f"missing_query_file_{category}"] += 1
+            continue
+        queries = read_json_or_jsonl(query_path)
+        for local_index, query_row in enumerate(queries):
+            if int(max_rows_per_category) > 0 and per_category_counts[category] >= int(max_rows_per_category):
+                continue
+            try:
+                question_id = int(query_row.get("id"))
+            except (TypeError, ValueError):
+                skipped["missing_id"] += 1
+                continue
+            annotation = annotations_by_id.get(question_id)
+            if annotation is None:
+                skipped["missing_annotation"] += 1
+                continue
+            label = normalize_label(annotation.get("truth"))
+            if label is None:
+                skipped["missing_yes_no_label"] += 1
+                continue
+            question = str(query_row.get("query", "")).strip()
+            if not question:
+                skipped["missing_question"] += 1
+                continue
+            image_path = normalize_image_path(query_row.get("image", ""), amber_root, image_root, image_index)
+            if not image_path:
+                skipped["missing_image"] += 1
+                continue
+            category_index = per_category_counts[category]
+            sample = {
+                "sample_id": safe_sample_id(category, category_index, f"{query_path.stem}_{question_id}"),
+                "image": image_path,
+                "image_path": image_path,
+                "question": question,
+                "label": label,
+                "answer": "Yes" if label == "yes" else "No",
+                "category": category,
+                "amber_category": category,
+                "raw_category": str(annotation.get("type", "")),
+                "expert": EXPERT_BY_CATEGORY.get(category, ""),
+                "source": "amber_official_discriminative",
+                "source_file": str(query_path),
+                "source_row": local_index,
+                "annotation_id": question_id,
+                "annotation_type": str(annotation.get("type", "")),
+            }
+            samples.append(sample)
+            per_category_counts[category] += 1
+            answer_counts[category][label] += 1
+            source_file_counts[str(query_path)] += 1
+
+    stats = {
+        "source": "amber_official_discriminative",
+        "amber_root": str(amber_root),
+        "image_root": str(image_root),
+        "categories": sorted(categories),
+        "total_samples": len(samples),
+        "category_counts": dict(sorted(per_category_counts.items())),
+        "answer_counts": {
+            category: dict(sorted(counts.items()))
+            for category, counts in sorted(answer_counts.items())
+        },
+        "expert_counts": dict(sorted(Counter(sample["expert"] for sample in samples).items())),
+        "source_file_counts": dict(source_file_counts.most_common()),
+        "skipped": dict(sorted(skipped.items())),
+        "schema": "official_query_join_annotations_by_id",
+    }
+    return sorted(samples, key=lambda item: (str(item["category"]), str(item["sample_id"]))), stats
+
+
 def build_samples(args: argparse.Namespace) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Build prepared AMBER yes/no samples and stats."""
 
@@ -266,8 +388,25 @@ def build_samples(args: argparse.Namespace) -> tuple[list[dict[str, Any]], dict[
     categories = {str(category).strip().lower() for category in args.categories}
     ensure_output_ready(out_dir, categories, bool(args.overwrite))
 
-    files = candidate_annotation_files(amber_root, list(args.input_files))
     image_index = build_image_index(amber_root)
+    if not list(args.input_files):
+        official = build_official_amber_samples(
+            amber_root=amber_root,
+            image_root=image_root,
+            categories=categories,
+            image_index=image_index,
+            max_rows_per_category=int(args.max_rows_per_category),
+        )
+        if official is not None and official[1].get("total_samples", 0) > 0:
+            samples, stats = official
+            stats["out_dir"] = str(out_dir)
+            stats["jsonl_files"] = {
+                "all": str(out_dir / "all.jsonl"),
+                **{category: str(out_dir / f"{category}.jsonl") for category in sorted(categories)},
+            }
+            return samples, stats
+
+    files = candidate_annotation_files(amber_root, list(args.input_files))
     samples: list[dict[str, Any]] = []
     per_category_counts: Counter[str] = Counter()
     answer_counts: dict[str, Counter[str]] = defaultdict(Counter)
