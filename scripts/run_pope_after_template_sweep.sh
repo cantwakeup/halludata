@@ -8,11 +8,14 @@ IMAGE_ROOT="${IMAGE_ROOT:-/home/huiwei/sy/sy_data/COCO2014/val2014}"
 POPE_FILE="${POPE_FILE:-/home/huiwei/sy/benchmarks/POPE/output/coco/coco_pope_random.json}"
 VECTOR_PATH="${VECTOR_PATH:-data/outputs_after_template_v1/steering/after_template_expert_vectors.pt}"
 LIMIT="${LIMIT:-500}"
-GPU="${GPU:-0}"
+GPU="${GPU:-auto}"
 ALPHAS="${ALPHAS:-1 2 4 8}"
 RUN_ROOT="${RUN_ROOT:-data/outputs_after_template_v1/runs}"
 
-CUDA_VISIBLE_DEVICES="$GPU" python scripts/run_steered_benchmark.py \
+source scripts/gpu_sweep_utils.sh
+init_gpu_scheduler
+
+run_gpu_job python scripts/run_steered_benchmark.py \
   --benchmark-data "$POPE_FILE" \
   --benchmark-name pope_random_after_template \
   --out-dir "$RUN_ROOT/pope_random_after_template_baseline" \
@@ -26,7 +29,7 @@ CUDA_VISIBLE_DEVICES="$GPU" python scripts/run_steered_benchmark.py \
   --overwrite
 
 for alpha in $ALPHAS; do
-  CUDA_VISIBLE_DEVICES="$GPU" python scripts/run_steered_benchmark.py \
+  run_gpu_job python scripts/run_steered_benchmark.py \
     --benchmark-data "$POPE_FILE" \
     --benchmark-name pope_random_after_template \
     --out-dir "$RUN_ROOT/pope_random_after_template_cat_alpha${alpha}" \
@@ -52,6 +55,8 @@ for alpha in $ALPHAS; do
     --decode-apply-to last_token \
     --overwrite
 done
+
+wait_gpu_jobs
 
 python scripts/summarize_after_template_results.py \
   --pairs-stats data/after_template_v1/pairs/stats.json \

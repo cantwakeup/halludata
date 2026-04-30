@@ -10,8 +10,11 @@ POSITION_FILE="${POSITION_FILE:-${BENCH_ROOT}/position.jsonl}"
 VECTOR_PATH="${VECTOR_PATH:-data/outputs_after_template_rel_v2/steering/relation_v2_vectors.pt}"
 HEAD_MAP_ROOT="${HEAD_MAP_ROOT:-data/outputs_after_template_v1/head_analysis/head_maps}"
 RUN_ROOT="${RUN_ROOT:-data/outputs_after_template_rel_v2/runs/mme_position}"
-GPU="${GPU:-0}"
+GPU="${GPU:-auto}"
 ALPHAS="${ALPHAS:-0.05 0.1 0.25 0.5 1.0}"
+
+source scripts/gpu_sweep_utils.sh
+init_gpu_scheduler
 
 if [[ ! -f "$POSITION_FILE" ]]; then
   echo "Missing MME position JSONL: $POSITION_FILE" >&2
@@ -22,7 +25,7 @@ fi
 run_eval() {
   local out_dir="$1"
   shift
-  CUDA_VISIBLE_DEVICES="$GPU" python scripts/run_steered_benchmark.py \
+  run_gpu_job python scripts/run_steered_benchmark.py \
     --benchmark-data "$POSITION_FILE" \
     --benchmark-name mme_position_relation_v2 \
     --out-dir "$out_dir" \
@@ -107,6 +110,8 @@ for expert in rel_left rel_right rel_above rel_below; do
     done
   done
 done
+
+wait_gpu_jobs
 
 python scripts/summarize_relation_v2_and_heads.py \
   --relation-pairs-stats data/after_template_rel_v2/pairs/stats.json \

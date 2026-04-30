@@ -14,10 +14,13 @@ BENCH_ROOT="${BENCH_ROOT:-data/benchmarks/mme_hallucination}"
 IMAGE_ROOT="${IMAGE_ROOT:-${BENCH_ROOT}/images}"
 VECTOR_PATH="${VECTOR_PATH:-data/outputs_after_template_v1/steering/after_template_expert_vectors.pt}"
 RUN_ROOT="${RUN_ROOT:-data/outputs_after_template_v1/mme_runs}"
-GPU="${GPU:-0}"
+GPU="${GPU:-auto}"
 LIMIT="${LIMIT:-0}"
 ALPHAS="${ALPHAS:-0.25 0.5 0.75 1 1.5 2}"
 CATEGORIES="${CATEGORIES:-existence count color position}"
+
+source scripts/gpu_sweep_utils.sh
+init_gpu_scheduler
 
 expert_for_category() {
   case "$1" in
@@ -50,7 +53,7 @@ for category in $CATEGORIES; do
   router="$(router_for_expert "$expert")"
   benchmark_name="mme_${category}_after_template"
 
-  CUDA_VISIBLE_DEVICES="$GPU" python scripts/run_steered_benchmark.py \
+  run_gpu_job python scripts/run_steered_benchmark.py \
     --benchmark-data "$data_file" \
     --benchmark-name "$benchmark_name" \
     --out-dir "$RUN_ROOT/$category/baseline" \
@@ -64,7 +67,7 @@ for category in $CATEGORIES; do
     --overwrite
 
   for alpha in $ALPHAS; do
-    CUDA_VISIBLE_DEVICES="$GPU" python scripts/run_steered_benchmark.py \
+    run_gpu_job python scripts/run_steered_benchmark.py \
       --benchmark-data "$data_file" \
       --benchmark-name "$benchmark_name" \
       --out-dir "$RUN_ROOT/$category/${expert}_alpha${alpha}" \
@@ -91,6 +94,8 @@ for category in $CATEGORIES; do
       --overwrite
   done
 done
+
+wait_gpu_jobs
 
 python scripts/summarize_mme_after_template_results.py \
   --runs-root "$RUN_ROOT" \

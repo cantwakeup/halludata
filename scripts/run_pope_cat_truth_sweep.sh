@@ -9,10 +9,13 @@ IMAGE_ROOT="${IMAGE_ROOT:-/home/huiwei/sy/sy_data/COCO2014/val2014}"
 POPE_ROOT="${POPE_ROOT:-/home/huiwei/sy/benchmarks/POPE/output/coco}"
 VECTOR_PATH="${VECTOR_PATH:-data/outputs/steering/cat_truth_vector.pt}"
 LIMIT="${LIMIT:-500}"
-GPU="${GPU:-0}"
+GPU="${GPU:-auto}"
+
+source scripts/gpu_sweep_utils.sh
+init_gpu_scheduler
 
 for dataset in random popular adversarial; do
-  CUDA_VISIBLE_DEVICES="${GPU}" python scripts/run_steered_benchmark.py \
+  run_gpu_job python scripts/run_steered_benchmark.py \
     --benchmark-data "${POPE_ROOT}/coco_pope_${dataset}.json" \
     --benchmark-name "pope_${dataset}" \
     --out-dir "data/outputs/runs/pope_cat_truth/${dataset}/baseline" \
@@ -26,7 +29,7 @@ for dataset in random popular adversarial; do
     --overwrite
 
   for alpha in 1 2 4 8; do
-    CUDA_VISIBLE_DEVICES="${GPU}" python scripts/run_steered_benchmark.py \
+    run_gpu_job python scripts/run_steered_benchmark.py \
       --benchmark-data "${POPE_ROOT}/coco_pope_${dataset}.json" \
       --benchmark-name "pope_${dataset}" \
       --out-dir "data/outputs/runs/pope_cat_truth/${dataset}/alpha${alpha}" \
@@ -53,3 +56,5 @@ for dataset in random popular adversarial; do
       --overwrite
   done
 done
+
+wait_gpu_jobs

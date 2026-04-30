@@ -11,10 +11,13 @@ MME_IMAGE_ROOT="${MME_IMAGE_ROOT:-${MME_ROOT}/images}"
 VECTOR_PATH="${VECTOR_PATH:-data/outputs_after_template_v1/steering/after_template_expert_vectors.pt}"
 HEAD_MAP="${HEAD_MAP:-data/outputs_after_template_v1/head_analysis/head_maps/top64.json}"
 RUN_ROOT="${RUN_ROOT:-data/outputs_after_template_v1/runs/expert_head_sanity}"
-GPU="${GPU:-0}"
+GPU="${GPU:-auto}"
+
+source scripts/gpu_sweep_utils.sh
+init_gpu_scheduler
 
 for alpha in 1.0 1.5 2.0; do
-  CUDA_VISIBLE_DEVICES="$GPU" python scripts/run_steered_benchmark.py \
+  run_gpu_job python scripts/run_steered_benchmark.py \
     --benchmark-data "$POPE_FILE" \
     --benchmark-name pope_random_after_template_expert_heads \
     --out-dir "$RUN_ROOT/pope_random_cat_top64_alpha${alpha}" \
@@ -39,7 +42,7 @@ for alpha in 1.0 1.5 2.0; do
 done
 
 for alpha in 0.5 1.0 1.5; do
-  CUDA_VISIBLE_DEVICES="$GPU" python scripts/run_steered_benchmark.py \
+  run_gpu_job python scripts/run_steered_benchmark.py \
     --benchmark-data "$MME_ROOT/color.jsonl" \
     --benchmark-name mme_color_after_template_expert_heads \
     --out-dir "$RUN_ROOT/mme_color_attr_top64_alpha${alpha}" \
@@ -62,6 +65,8 @@ for alpha in 0.5 1.0 1.5; do
     --steer-decode true \
     --overwrite
 done
+
+wait_gpu_jobs
 
 python scripts/summarize_relation_v2_and_heads.py \
   --relation-pairs-stats data/after_template_rel_v2/pairs/stats.json \
