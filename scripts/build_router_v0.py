@@ -1,7 +1,8 @@
 """Build and optionally evaluate a rule-based query router v0.
 
 This router is intentionally non-learned. It only inspects the query text and
-returns multi-label weights when multiple rules match.
+returns rule-label weights. It is a planning/debug artifact, not the learned
+router used in final experiments.
 """
 
 from __future__ import annotations
@@ -19,26 +20,24 @@ LABEL_ORDER = (
     "cat",
     "attr_count",
     "attr_color",
+    "attr_action_state",
     "rel_spatial",
-    "rel_horizontal",
-    "rel_vertical",
-    "rel_contact_placeholder",
+    "rel_contact_missing",
     "unknown",
 )
 PRIMARY_PRIORITY = (
-    "cat",
+    "rel_contact_missing",
+    "rel_spatial",
     "attr_count",
     "attr_color",
-    "rel_horizontal",
-    "rel_vertical",
-    "rel_contact_placeholder",
-    "rel_spatial",
+    "attr_action_state",
+    "cat",
     "unknown",
 )
-COUNT_WORDS = {"how many", "number", "total", "one", "two", "three", "four", "five", "six"}
-COLOR_WORDS = {"red", "blue", "green", "yellow", "black", "white", "brown", "orange", "color", "colour"}
-HORIZONTAL_WORDS = {"left", "right"}
-VERTICAL_WORDS = {"above", "below", "top", "bottom"}
+COUNT_WORDS = {"how many", "number", "total", "count", "one", "two", "three", "four", "five", "six"}
+COLOR_WORDS = {"red", "blue", "green", "yellow", "black", "white", "gray", "grey", "brown", "orange", "color", "colour"}
+ACTION_WORDS = {"sitting", "standing", "running", "lying", "holding", "wearing", "riding", "carrying"}
+SPATIAL_WORDS = {"left", "right", "above", "below", "top", "bottom"}
 CONTACT_PHRASES = {"direct contact", "touch", "touching"}
 
 
@@ -124,24 +123,24 @@ def route_query(question: str) -> dict[str, float]:
     scores: dict[str, float] = {}
     count_hit = any(has_word(text, word) for word in COUNT_WORDS)
     color_hit = any(has_word(text, word) for word in COLOR_WORDS)
-    horizontal_hit = any(has_word(text, word) for word in HORIZONTAL_WORDS)
-    vertical_hit = any(has_word(text, word) for word in VERTICAL_WORDS)
+    action_hit = any(has_word(text, word) for word in ACTION_WORDS)
+    spatial_hit = any(has_word(text, word) for word in SPATIAL_WORDS)
     contact_hit = any(phrase in text for phrase in CONTACT_PHRASES)
     existence_hit = re.search(r"\b(is|are)\s+there\b", text) is not None
 
+    if contact_hit:
+        add_score(scores, "rel_contact_missing")
+    if spatial_hit:
+        add_score(scores, "rel_spatial")
     if count_hit:
         add_score(scores, "attr_count")
     if color_hit:
         add_score(scores, "attr_color")
-    if horizontal_hit:
-        add_score(scores, "rel_horizontal")
-        add_score(scores, "rel_spatial")
-    if vertical_hit:
-        add_score(scores, "rel_vertical")
-        add_score(scores, "rel_spatial")
-    if contact_hit:
-        add_score(scores, "rel_contact_placeholder")
-    if existence_hit and not any((count_hit, color_hit, horizontal_hit, vertical_hit, contact_hit)):
+    if action_hit and not contact_hit and not spatial_hit:
+        # No interaction/contact vector exists yet; keep action/state separate
+        # from relation routing unless an explicit spatial/contact rule fires.
+        add_score(scores, "attr_action_state")
+    if existence_hit and not any((count_hit, color_hit, action_hit, spatial_hit, contact_hit)):
         add_score(scores, "cat")
     if not scores:
         scores["unknown"] = 1.0
@@ -164,13 +163,13 @@ def positive_labels(weights: Mapping[str, float]) -> set[str]:
 
 
 def relation_axis_from_text(text: str) -> str | None:
-    """Infer horizontal/vertical relation axis from a row or question."""
+    """Infer spatial/contact relation class from a row or question."""
 
     normalized = normalize_text(text)
-    if any(has_word(normalized, word) for word in HORIZONTAL_WORDS):
-        return "rel_horizontal"
-    if any(has_word(normalized, word) for word in VERTICAL_WORDS):
-        return "rel_vertical"
+    if any(phrase in normalized for phrase in CONTACT_PHRASES):
+        return "rel_contact_missing"
+    if any(has_word(normalized, word) for word in SPATIAL_WORDS):
+        return "rel_spatial"
     return None
 
 
@@ -187,26 +186,33 @@ def expected_labels(row: Mapping[str, Any]) -> set[str]:
     if subtype == "attr_color" or category in {"color", "attribute"}:
         if "color" in normalize_text(row.get("question", "")) or category == "color":
             return {"attr_color"}
-        return {"attr_count", "attr_color"} if category == "attribute" else {"attr_color"}
+        question = normalize_text(row.get("question", ""))
+        if any(has_word(question, word) for word in ACTION_WORDS):
+            return {"attr_action_state"}
+        return {"attr_count", "attr_color", "attr_action_state"} if category == "attribute" else {"attr_color"}
     if hallucination_type == "attr":
-        return {"attr_count" if "how many" in normalize_text(row.get("question", "")) else "attr_color"}
+        question = normalize_text(row.get("question", ""))
+        if "how many" in question:
+            return {"attr_count"}
+        if any(has_word(question, word) for word in ACTION_WORDS):
+            return {"attr_action_state"}
+        return {"attr_color"}
     if hallucination_type == "rel" or category in {"position", "relation"}:
         axis = (
             relation_axis_from_text(str(row.get("queried_relation") or ""))
             or relation_axis_from_text(str(row.get("true_relation") or ""))
             or relation_axis_from_text(str(row.get("question") or ""))
         )
-        labels = {"rel_spatial"}
         if axis:
-            labels.add(axis)
-        return labels
+            return {axis}
+        return {"rel_spatial"}
     return {"unknown"}
 
 
 def expected_primary(labels: set[str]) -> str:
     """Choose a deterministic primary expected label."""
 
-    for label in ("cat", "attr_count", "attr_color", "rel_horizontal", "rel_vertical", "rel_contact_placeholder", "rel_spatial", "unknown"):
+    for label in ("cat", "attr_count", "attr_color", "attr_action_state", "rel_spatial", "rel_contact_missing", "unknown"):
         if label in labels:
             return label
     return "unknown"
@@ -304,10 +310,10 @@ def render_report(out_path: Path, data_path: Path | None, evaluation: Mapping[st
             "- `is there` / `are there` without count/color/position/contact keywords -> `cat`",
             "- `how many`, `number`, `total`, or number words one-six -> `attr_count`",
             "- color words or `color` / `colour` -> `attr_color`",
-            "- `left` / `right` -> `rel_horizontal` and `rel_spatial`",
-            "- `above` / `below` / `top` / `bottom` -> `rel_vertical` and `rel_spatial`",
-            "- `direct contact`, `touch`, or `touching` -> `rel_contact_placeholder`",
-            "- Multiple matched rules produce multi-label normalized weights.",
+            "- action/state verbs (`sitting`, `standing`, `holding`, `wearing`, etc.) -> `attr_action_state`",
+            "- `left`, `right`, `above`, `below`, `top`, `bottom` -> `rel_spatial`",
+            "- `direct contact`, `touch`, or `touching` -> `rel_contact_missing` because no contact vector exists yet",
+            "- Multiple matched rules produce multi-label normalized weights; primary priority favors explicit contact/spatial rules.",
             "",
             "## Evaluation",
             "",
