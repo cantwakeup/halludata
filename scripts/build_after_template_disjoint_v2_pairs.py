@@ -40,12 +40,23 @@ RELATION_PHRASES = {
     "right_of": "to the right of",
     "above": "above",
     "below": "below",
+    "in": "in",
+    "inside": "inside",
     "on": "on",
     "under": "under",
+    "beside": "beside",
+    "close_to": "close to",
     "next_to": "next to",
     "near": "near",
     "in_front_of": "in front of",
     "behind": "behind",
+    "carrying": "carrying",
+    "eating": "eating",
+    "drinking": "drinking",
+    "looking_at": "looking at",
+    "watching": "watching",
+    "playing_with": "playing with",
+    "using": "using",
     "holding": "holding",
     "riding": "riding",
     "wearing": "wearing",
@@ -69,15 +80,66 @@ REL_SUBTYPE = {
     "below": "rel_position_vertical",
     "direct_contact": "rel_contact",
     "touching": "rel_contact",
+    "in": "rel_contact",
+    "inside": "rel_contact",
+    "beside": "rel_contact",
+    "close_to": "rel_contact",
     "holding": "rel_interaction",
     "riding": "rel_interaction",
     "wearing": "rel_interaction",
+    "carrying": "rel_interaction",
+    "eating": "rel_interaction",
+    "drinking": "rel_interaction",
+    "looking_at": "rel_interaction",
+    "watching": "rel_interaction",
+    "playing_with": "rel_interaction",
+    "using": "rel_interaction",
     "on": "rel_contact",
     "under": "rel_position_vertical",
     "next_to": "rel_contact",
     "near": "rel_contact",
     "in_front_of": "rel_position_depth",
     "behind": "rel_position_depth",
+}
+REL_BUCKETS = {
+    "left_of": "horizontal",
+    "right_of": "horizontal",
+    "above": "vertical",
+    "below": "vertical",
+    "under": "vertical",
+    "in_front_of": "depth",
+    "behind": "depth",
+    "on": "contact",
+    "in": "contact",
+    "inside": "contact",
+    "next_to": "contact",
+    "near": "contact",
+    "beside": "contact",
+    "close_to": "contact",
+    "touching": "contact",
+    "direct_contact": "contact",
+    "holding": "interaction",
+    "riding": "interaction",
+    "wearing": "interaction",
+    "carrying": "interaction",
+    "eating": "interaction",
+    "drinking": "interaction",
+    "looking_at": "interaction",
+    "watching": "interaction",
+    "playing_with": "interaction",
+    "using": "interaction",
+}
+REL_BUCKET_ORDER = ("horizontal", "vertical", "depth", "contact", "interaction", "semantic")
+DEFAULT_RELATION_BUCKET_RATIO = "horizontal=0.5,vertical=0.1,depth=0.15,contact=0.15,interaction=0.1,semantic=0.0"
+VAGUE_RELATIONS = {
+    "",
+    "of",
+    "with",
+    "by",
+    "at",
+    "around",
+    "surrounding",
+    "surrounded_by",
 }
 
 
@@ -114,6 +176,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--relation-source", default="", help="Optional VG/GQA/AMBER-style relation JSON/JSONL.")
     parser.add_argument("--relation-image-root", default="", help="Image root for --relation-source. Defaults to --image-root.")
     parser.add_argument("--relation-fallback", choices=["coco_bbox", "none"], default="coco_bbox")
+    parser.add_argument(
+        "--relation-bucket-ratio",
+        default=DEFAULT_RELATION_BUCKET_RATIO,
+        help="Per-image external relation sampling mix across horizontal/vertical/depth/contact/interaction/semantic buckets.",
+    )
+    parser.add_argument("--progress-every", type=int, default=50000, help="Progress interval while parsing external relation rows.")
     parser.add_argument(
         "--rel-template-variant",
         choices=["basic", "inverse", "contrastive_inverse"],
@@ -177,6 +245,27 @@ def allocation_counts(num_images: int, ratios: Mapping[str, float]) -> dict[str,
     for expert in order[:remaining]:
         counts[expert] += 1
     return counts
+
+
+def parse_named_ratio(raw_ratio: str, allowed_keys: Iterable[str], *, name: str) -> dict[str, float]:
+    """Parse a named ratio string like ``a=0.5,b=0.5``."""
+
+    allowed = tuple(allowed_keys)
+    ratios = {key: 0.0 for key in allowed}
+    for piece in str(raw_ratio).split(","):
+        if not piece.strip():
+            continue
+        if "=" not in piece:
+            raise ValueError(f"{name} entries must use key=value, got {piece!r}")
+        key, value = piece.split("=", 1)
+        key = key.strip()
+        if key not in ratios:
+            raise ValueError(f"{name} has unsupported key {key!r}; allowed keys are {allowed}")
+        ratios[key] = float(value.strip())
+    total = sum(ratios.values())
+    if total <= 0:
+        raise ValueError(f"{name} must have positive total weight")
+    return {key: value / total for key, value in ratios.items()}
 
 
 def article_for(noun: str) -> str:
@@ -393,37 +482,58 @@ def build_attr_rows(
 def read_records(path: Path) -> list[Any]:
     """Read JSON or JSONL records."""
 
+    return list(iter_records(path))
+
+
+def iter_records(path: Path, rng: random.Random | None = None) -> Iterable[Any]:
+    """Iterate JSON or JSONL records without building avoidable intermediate lists."""
+
     if path.suffix.lower() == ".jsonl":
-        records: list[Any] = []
         with path.open("r", encoding="utf-8") as handle:
             for line in handle:
                 text = line.strip()
                 if text:
-                    records.append(json.loads(text))
-        return records
-    payload = json.loads(path.read_text(encoding="utf-8"))
+                    yield json.loads(text)
+        return
+    with path.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
     if isinstance(payload, list):
-        return payload
+        if rng is not None:
+            rng.shuffle(payload)
+        for item in payload:
+            yield item
+        return
     if isinstance(payload, dict):
         for key in ("data", "annotations", "relationships", "samples", "questions"):
             value = payload.get(key)
             if isinstance(value, list):
-                return value
+                if rng is not None:
+                    rng.shuffle(value)
+                for item in value:
+                    yield item
+                return
         if payload and all(isinstance(value, Mapping) for value in payload.values()):
-            records = []
-            for key, value in payload.items():
+            keys = list(payload)
+            if rng is not None:
+                rng.shuffle(keys)
+            for key in keys:
+                value = payload[key]
                 item = dict(value)
                 item.setdefault("image_id", key)
-                records.append(item)
-            return records
-        return [payload]
-    return []
+                yield item
+            return
+        yield payload
 
 
 def flatten_relation_records(records: Iterable[Any]) -> list[dict[str, Any]]:
     """Flatten common VG/GQA/AMBER-style relation records into dictionaries."""
 
-    flat: list[dict[str, Any]] = []
+    return list(iter_flatten_relation_records(records))
+
+
+def iter_flatten_relation_records(records: Iterable[Any]) -> Iterable[dict[str, Any]]:
+    """Yield common VG/GQA/AMBER-style relation records as flat dictionaries."""
+
     for record in records:
         if not isinstance(record, Mapping):
             continue
@@ -458,7 +568,7 @@ def flatten_relation_records(records: Iterable[Any]) -> list[dict[str, Any]]:
                     merged["predicate"] = string_field(relation, "name", "predicate", "relation", "rel")
                     object_ref = string_field(relation, "object", "object_id", "obj", "to")
                     merged["object"] = object_names.get(object_ref, object_ref)
-                    flat.append(merged)
+                    yield merged
             continue
         relations = record.get("relationships") or record.get("relations")
         if isinstance(relations, list):
@@ -468,10 +578,9 @@ def flatten_relation_records(records: Iterable[Any]) -> list[dict[str, Any]]:
                     for key in ("image", "image_id", "img_id", "file_name"):
                         if key in record and key not in merged:
                             merged[key] = record[key]
-                    flat.append(merged)
+                    yield merged
             continue
-        flat.append(dict(record))
-    return flat
+        yield dict(record)
 
 
 def string_field(row: Mapping[str, Any], *keys: str) -> str:
@@ -512,13 +621,32 @@ def normalize_relation(raw_relation: str) -> str:
         "above": "above",
         "below": "below",
         "bottom": "below",
+        "in": "in",
+        "inside": "inside",
         "under": "under",
         "underneath": "under",
+        "beside": "beside",
+        "next": "next_to",
         "next to": "next_to",
         "near": "near",
+        "close to": "close_to",
         "in front of": "in_front_of",
         "front of": "in_front_of",
         "behind": "behind",
+        "carry": "carrying",
+        "carrying": "carrying",
+        "eat": "eating",
+        "eating": "eating",
+        "drink": "drinking",
+        "drinking": "drinking",
+        "look at": "looking_at",
+        "looking at": "looking_at",
+        "watch": "watching",
+        "watching": "watching",
+        "play with": "playing_with",
+        "playing with": "playing_with",
+        "use": "using",
+        "using": "using",
         "holding": "holding",
         "hold": "holding",
         "riding": "riding",
@@ -532,6 +660,67 @@ def normalize_relation(raw_relation: str) -> str:
         "on": "on",
     }
     return aliases.get(text, text.replace(" ", "_"))
+
+
+def clean_entity_name(raw_name: str) -> str:
+    """Normalize object names for readable templates and equality checks."""
+
+    name = str(raw_name).strip().lower()
+    name = re.sub(r"[^a-z0-9\s_-]+", " ", name)
+    name = re.sub(r"\s+", " ", name).strip()
+    for article in ("the ", "a ", "an "):
+        if name.startswith(article):
+            name = name[len(article) :].strip()
+    return name
+
+
+def comparable_entity_name(raw_name: str) -> str:
+    """Return a compact object name used for duplicate-subject filtering."""
+
+    name = clean_entity_name(raw_name)
+    name = name.replace("_", " ").replace("-", " ")
+    name = re.sub(r"\s+", " ", name).strip()
+    if name.endswith("ies") and len(name) > 4:
+        name = name[:-3] + "y"
+    elif name.endswith("s") and not name.endswith("ss") and len(name) > 3:
+        name = name[:-1]
+    return name
+
+
+def looks_plural(noun: str) -> bool:
+    """Small grammar helper for relation templates."""
+
+    text = clean_entity_name(noun)
+    if not text:
+        return False
+    head = text.split()[-1]
+    if head in {"people", "men", "women", "children", "teeth", "feet"}:
+        return True
+    if head.endswith(("ss", "us")):
+        return False
+    return head.endswith("s")
+
+
+def relation_be(noun: str) -> str:
+    """Return ``is`` or ``are`` for simple relation facts/questions."""
+
+    return "are" if looks_plural(noun) else "is"
+
+
+def relation_bucket(relation: str) -> str:
+    """Map a relation key to a coarse sampling bucket."""
+
+    return REL_BUCKETS.get(str(relation), "semantic")
+
+
+def relation_is_usable(subject: str, relation: str, obj: str) -> bool:
+    """Filter vague or self-referential relation rows."""
+
+    if normalize_relation(relation) in VAGUE_RELATIONS:
+        return False
+    if comparable_entity_name(subject) == comparable_entity_name(obj):
+        return False
+    return bool(clean_entity_name(subject) and clean_entity_name(obj))
 
 
 def parse_amber_relation_query(question: str) -> tuple[str, str, str] | None:
@@ -562,8 +751,8 @@ def relation_scene_text(subject: str, relation: str, obj: str, label: str = "yes
 
     phrase = RELATION_PHRASES.get(relation, relation.replace("_", " "))
     if label == "no":
-        return f"The {subject} is not {phrase} the {obj} in the image."
-    return f"The {subject} is {phrase} the {obj} in the image."
+        return f"The {subject} {relation_be(subject)} not {phrase} the {obj} in the image."
+    return f"The {subject} {relation_be(subject)} {phrase} the {obj} in the image."
 
 
 def absolutize_image_path(image: str, image_root: Path) -> str:
@@ -581,14 +770,98 @@ def relation_question(subject: str, relation: str, obj: str, label: str = "yes")
     phrase = RELATION_PHRASES.get(relation, relation.replace("_", " "))
     if relation == "direct_contact":
         return f"Is there direct contact between the {subject} and the {obj}?"
-    return f"Is the {subject} {phrase} the {obj} in the image?"
+    aux = "Are" if looks_plural(subject) else "Is"
+    return f"{aux} the {subject} {phrase} the {obj} in the image?"
 
 
-def external_relation_rows(path: Path, max_pairs_per_image: int, skipped: Counter[str]) -> dict[str, list[dict[str, Any]]]:
+def relation_bucket_quotas(max_pairs: int, ratios: Mapping[str, float]) -> dict[str, int]:
+    """Convert bucket ratios to small per-image quotas."""
+
+    max_pairs = max(1, int(max_pairs))
+    exact = {bucket: max_pairs * float(ratios.get(bucket, 0.0)) for bucket in REL_BUCKET_ORDER}
+    quotas = {bucket: int(math.floor(value)) for bucket, value in exact.items()}
+    remaining = max_pairs - sum(quotas.values())
+    order = sorted(REL_BUCKET_ORDER, key=lambda bucket: (exact[bucket] - quotas[bucket], ratios.get(bucket, 0.0)), reverse=True)
+    for bucket in order[:remaining]:
+        quotas[bucket] += 1
+    return quotas
+
+
+def select_balanced_relation_rows(
+    rows: list[dict[str, Any]],
+    max_pairs_per_image: int,
+    bucket_ratios: Mapping[str, float],
+    rng: random.Random,
+) -> list[dict[str, Any]]:
+    """Select relation rows per image while preventing left/right domination."""
+
+    max_pairs = max(1, int(max_pairs_per_image))
+
+    by_bucket: dict[str, list[dict[str, Any]]] = {bucket: [] for bucket in REL_BUCKET_ORDER}
+    for row in rows:
+        bucket = relation_bucket(str(row.get("true_relation") or row.get("queried_relation") or ""))
+        by_bucket.setdefault(bucket, []).append(row)
+    for bucket_rows in by_bucket.values():
+        rng.shuffle(bucket_rows)
+
+    quotas = relation_bucket_quotas(max_pairs, bucket_ratios)
+    selected: list[dict[str, Any]] = []
+    selected_ids: set[str] = set()
+
+    def take_from(bucket: str, count: int) -> None:
+        if count <= 0:
+            return
+        for row in by_bucket.get(bucket, []):
+            if len(selected) >= max_pairs:
+                return
+            row_id = str(row.get("id"))
+            if row_id in selected_ids:
+                continue
+            selected.append(row)
+            selected_ids.add(row_id)
+            count -= 1
+            if count <= 0:
+                return
+
+    for bucket in REL_BUCKET_ORDER:
+        take_from(bucket, quotas.get(bucket, 0))
+
+    # Fill remaining slots without letting horizontal rows exceed their quota.
+    fill_order = tuple(bucket for bucket in REL_BUCKET_ORDER if bucket != "horizontal")
+    while len(selected) < max_pairs:
+        before = len(selected)
+        for bucket in fill_order:
+            take_from(bucket, 1)
+            if len(selected) >= max_pairs:
+                break
+        if len(selected) == before:
+            break
+    return selected
+
+
+def external_relation_rows(
+    path: Path,
+    max_pairs_per_image: int,
+    skipped: Counter[str],
+    *,
+    rng: random.Random,
+    desired_images: int,
+    progress_every: int,
+) -> dict[str, list[dict[str, Any]]]:
     """Load external relation annotations into row groups keyed by image string."""
 
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for index, row in enumerate(flatten_relation_records(read_records(path))):
+    print(f"[relation-source] loading {path}", file=sys.stderr, flush=True)
+    records = iter_records(path, rng=rng)
+    print("[relation-source] parsing relation rows", file=sys.stderr, flush=True)
+    for index, row in enumerate(iter_flatten_relation_records(records), start=1):
+        if progress_every > 0 and index % progress_every == 0:
+            print(
+                f"[relation-source] parsed {index} relation rows, "
+                f"valid_images={len(groups)}/{desired_images}",
+                file=sys.stderr,
+                flush=True,
+            )
         question = string_field(row, "question", "query", "text")
         label = string_field(row, "label", "answer", "truth", "ground_truth").lower()
         if label in {"true", "1"}:
@@ -605,8 +878,14 @@ def external_relation_rows(path: Path, max_pairs_per_image: int, skipped: Counte
             parsed = parse_amber_relation_query(question)
             if parsed is not None:
                 subject, relation, obj = parsed
+        subject = clean_entity_name(subject)
+        obj = clean_entity_name(obj)
+        relation = normalize_relation(relation)
         if not subject or not obj or not relation:
             skipped["external_rel_missing_fields"] += 1
+            continue
+        if not relation_is_usable(subject, relation, obj):
+            skipped[f"external_rel_filtered_{relation_bucket(relation)}"] += 1
             continue
 
         image = image_from_relation_row(row)
@@ -636,6 +915,7 @@ def external_relation_rows(path: Path, max_pairs_per_image: int, skipped: Counte
                     "object_b": obj,
                     "true_relation": relation,
                     "queried_relation": relation,
+                    "relation_bucket": relation_bucket(relation),
                     "relation_source": str(path),
                 },
             )
@@ -661,11 +941,21 @@ def external_relation_rows(path: Path, max_pairs_per_image: int, skipped: Counte
                         "object_b": obj,
                         "true_relation": relation,
                         "queried_relation": opposite,
+                        "relation_bucket": relation_bucket(opposite),
                         "relation_source": str(path),
                     },
                 )
             )
         groups[image].extend(rows[: max(1, int(max_pairs_per_image))])
+        if desired_images > 0 and len(groups) >= desired_images:
+            skipped["external_rel_stopped_after_target_images"] += 1
+            break
+    print(
+        f"[relation-source] ready valid_images={len(groups)}, "
+        f"parsed_rows={index if 'index' in locals() else 0}",
+        file=sys.stderr,
+        flush=True,
+    )
     return groups
 
 
@@ -703,6 +993,7 @@ def coco_relation_rows(
         item["pair_id"] = item["id"]
         item["source"] = SOURCE_NAME
         item["relation_source"] = "coco_bbox_fallback"
+        item["relation_bucket"] = relation_bucket(str(item.get("true_relation") or item.get("queried_relation") or ""))
         item["prompt_style"] = "after_fas_complete_scene_v2"
         retagged.append(item)
     return retagged
@@ -755,13 +1046,20 @@ def summarize(
         "cross_type_image_overlap": overlaps,
         "type_counts": dict(Counter(str(row["hallucination_type"]) for row in all_rows)),
         "subtype_counts": dict(Counter(str(row["subtype"]) for row in all_rows)),
+        "label_counts": dict(Counter(str(row.get("label") or "unknown") for row in all_rows)),
         "label_counts_by_type": {
             expert: dict(Counter(str(row.get("label") or "unknown") for row in all_rows if str(row["hallucination_type"]) == expert))
             for expert in EXPERT_TYPES
         },
         "relation_counts": dict(Counter(str(row.get("true_relation", "")) for row in all_rows if str(row["hallucination_type"]) == "rel")),
         "queried_relation_counts": dict(Counter(str(row.get("queried_relation", "")) for row in all_rows if str(row["hallucination_type"]) == "rel")),
+        "relation_bucket_counts": dict(
+            Counter(str(row.get("relation_bucket") or relation_bucket(str(row.get("true_relation", "")))) for row in all_rows if str(row["hallucination_type"]) == "rel")
+        ),
         "relation_source": str(relation_source_path) if relation_source_path else "",
+        "relation_source_counts": dict(
+            Counter(str(row.get("relation_source") or "unknown") for row in all_rows if str(row["hallucination_type"]) == "rel")
+        ),
         "relation_fallback_used_images": int(relation_fallback_used),
         "skipped": dict(skipped),
         "prompt_style": "after_fas_complete_scene_v2",
@@ -785,6 +1083,11 @@ def main() -> int:
         rng = random.Random(int(args.seed))
         split_ratio = STYLE.parse_split_ratio(args.split_ratio)
         type_ratios = parse_type_ratio(args.type_image_ratio)
+        relation_bucket_ratios = parse_named_ratio(
+            args.relation_bucket_ratio,
+            REL_BUCKET_ORDER,
+            name="--relation-bucket-ratio",
+        )
         target_counts = allocation_counts(int(args.num_images), type_ratios)
         image_root = resolve_project_path(args.image_root)
         relation_source_path = optional_path(args.relation_source)
@@ -795,7 +1098,14 @@ def main() -> int:
 
         external_rel_groups: dict[str, list[dict[str, Any]]] = {}
         if relation_source_path is not None:
-            external_rel_groups = external_relation_rows(relation_source_path, int(args.max_rel_pairs_per_image), skipped)
+            external_rel_groups = external_relation_rows(
+                relation_source_path,
+                int(args.max_rel_pairs_per_image),
+                skipped,
+                rng=rng,
+                desired_images=target_counts["rel"],
+                progress_every=int(args.progress_every),
+            )
 
         def annotations_for(image_id: int) -> list[dict[str, Any]]:
             return valid_annotations_for(image_id, annotations_by_image, categories_by_id)
@@ -837,7 +1147,12 @@ def main() -> int:
         def rel_builder(image_key: str) -> list[dict[str, Any]]:
             nonlocal relation_fallback_used
             if image_key in external_rel_groups:
-                return external_rel_groups[image_key][: int(args.max_rel_pairs_per_image)]
+                return select_balanced_relation_rows(
+                    external_rel_groups[image_key],
+                    int(args.max_rel_pairs_per_image),
+                    relation_bucket_ratios,
+                    rng,
+                )
             if args.relation_fallback == "none":
                 skipped["rel_no_external_rows"] += 1
                 return []
@@ -915,6 +1230,7 @@ def main() -> int:
                 "rel": int(args.max_rel_pairs_per_image),
             },
             "relation_fallback": str(args.relation_fallback),
+            "relation_bucket_ratio": relation_bucket_ratios,
             "rel_template_variant": str(args.rel_template_variant),
             "seed": int(args.seed),
             "outputs": {split: str(path) for split, path in output_paths.items()},

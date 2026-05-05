@@ -11,6 +11,8 @@ It keeps image-level disjointness across `cat`, `attr`, and `rel`, but changes t
 - `cat` and `attr` are built from COCO annotations.
 - `rel` can be built from an external relation source such as VG/GQA/AMBER-style JSON/JSONL.
 - If no external relation source is provided, `rel` falls back to the existing high-confidence COCO bbox relation builder.
+- External `rel` rows filter self-referential pairs such as `clouds` vs `clouds`.
+- External `rel` rows are sampled with per-image bucket balancing so left/right relations do not dominate all selected rows.
 
 ## Intended Command
 
@@ -25,6 +27,7 @@ python scripts/build_after_template_disjoint_v2_pairs.py \
   --type-image-ratio cat=0.3,attr=0.3,rel=0.4 \
   --seed 42 \
   --split-ratio 0.6,0.2,0.2 \
+  --relation-bucket-ratio horizontal=0.5,vertical=0.1,depth=0.15,contact=0.15,interaction=0.1,semantic=0.0 \
   --overwrite
 ```
 
