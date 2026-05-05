@@ -13,6 +13,7 @@ GPU="${GPU:-auto}"
 LIMIT="${LIMIT:-500}"
 ALPHAS="${ALPHAS:-1.0}"
 DRY_RUN="${DRY_RUN:-0}"
+STEER_LAYERS="${STEER_LAYERS:-5-25}"
 
 POPE_ROOT="${POPE_ROOT:-/home/huiwei/sy/benchmarks/POPE/output/coco}"
 POPE_IMAGE_ROOT="${POPE_IMAGE_ROOT:-/home/huiwei/sy/sy_data/COCO2014/val2014}"
@@ -91,7 +92,7 @@ run_steered() {
     --progress-every 20 \
     --steer-enable \
     --steer-vector-path "$VECTOR_PATH" \
-    --steer-layers 10-20 \
+    --steer-layers "$STEER_LAYERS" \
     --steer-alpha "$alpha" \
     --steer-k-heads 64 \
     --steer-head-select norm \

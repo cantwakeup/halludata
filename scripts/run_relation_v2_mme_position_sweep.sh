@@ -12,6 +12,7 @@ HEAD_MAP_ROOT="${HEAD_MAP_ROOT:-data/outputs_after_template_v1/head_analysis/hea
 RUN_ROOT="${RUN_ROOT:-data/outputs_after_template_rel_v2/runs/mme_position}"
 GPU="${GPU:-auto}"
 ALPHAS="${ALPHAS:-0.05 0.1 0.25 0.5 1.0}"
+STEER_LAYERS="${STEER_LAYERS:-5-25}"
 
 source scripts/gpu_sweep_utils.sh
 init_gpu_scheduler
@@ -46,7 +47,7 @@ for alpha in $ALPHAS; do
   run_eval "$RUN_ROOT/rel_all_norm64_mid_alpha${alpha}" \
     --steer-enable \
     --steer-vector-path "$VECTOR_PATH" \
-    --steer-layers 10-20 \
+    --steer-layers "$STEER_LAYERS" \
     --steer-alpha "$alpha" \
     --steer-k-heads 64 \
     --steer-head-select norm \

@@ -16,6 +16,7 @@ GPU="${GPU:-auto}"
 LIMIT="${LIMIT:-0}"
 ALPHAS="${ALPHAS:-0.25 0.5 0.75 1 1.5 2}"
 CATEGORIES="${CATEGORIES:-existence attribute relation}"
+STEER_LAYERS="${STEER_LAYERS:-5-25}"
 
 source scripts/gpu_sweep_utils.sh
 init_gpu_scheduler
@@ -95,7 +96,7 @@ for category in $CATEGORIES; do
       --progress-every 20 \
       --steer-enable \
       --steer-vector-path "$VECTOR_PATH" \
-      --steer-layers 10-20 \
+      --steer-layers "$STEER_LAYERS" \
       --steer-alpha "$alpha" \
       --steer-k-heads 64 \
       --steer-head-select norm \

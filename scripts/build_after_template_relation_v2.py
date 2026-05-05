@@ -213,6 +213,22 @@ def trusted_text(object_a: str, object_b: str, true_relation: str, queried_relat
     return f"{fact} {inverse_fact(object_a, object_b, true_relation)}"
 
 
+def render_visual_prompt(question: str) -> str:
+    """Render the image-query side in a fuller AFTER-style format."""
+
+    return f"Question: {question}\nPlease answer the question based on the image."
+
+
+def render_trusted_prompt(trusted_factual_text: str, question: str) -> str:
+    """Render the text-only trusted side close to AFTER's factual-description prompt."""
+
+    return (
+        f"The given image depicts the following scene: {trusted_factual_text}\n"
+        "Please directly answer the following question from the image description, "
+        f"without guessing or reasoning. Question: {question}"
+    )
+
+
 def relation_row(
     *,
     image: Mapping[str, Any],
@@ -245,12 +261,13 @@ def relation_row(
         "queried_relation": queried_relation,
         "label": label,
         "question": question,
-        "visual_prompt": f"Question: {question}",
+        "visual_prompt": render_visual_prompt(question),
         "trusted_factual_text": trusted_factual_text,
-        "trusted_prompt": f"Image fact: {trusted_factual_text}\nQuestion: {question}",
+        "trusted_prompt": render_trusted_prompt(trusted_factual_text, question),
         "hallucination_type": "rel",
         "subtype": SUBTYPE[true_relation],
         "template_variant": template_variant,
+        "prompt_style": "after_fas_complete_v1",
         "objects": [object_a, object_b],
         "factual_fact": f"{object_a} {QUERY_PHRASE[true_relation]} {object_b}",
         "source": "after_template_rel_v2",

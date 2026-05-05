@@ -11,6 +11,7 @@ LIMIT="${LIMIT:-500}"
 GPU="${GPU:-auto}"
 ALPHAS="${ALPHAS:-1 2 4 8}"
 RUN_ROOT="${RUN_ROOT:-data/outputs_after_template_v1/runs}"
+STEER_LAYERS="${STEER_LAYERS:-5-25}"
 
 source scripts/gpu_sweep_utils.sh
 init_gpu_scheduler
@@ -42,7 +43,7 @@ for alpha in $ALPHAS; do
     --progress-every 20 \
     --steer-enable \
     --steer-vector-path "$VECTOR_PATH" \
-    --steer-layers 10-20 \
+    --steer-layers "$STEER_LAYERS" \
     --steer-alpha "$alpha" \
     --steer-k-heads 64 \
     --steer-head-select norm \

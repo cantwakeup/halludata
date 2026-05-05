@@ -51,7 +51,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--trust-remote-code", default="false")
 
     parser.add_argument("--steer-vector-path", required=True)
-    parser.add_argument("--steer-layers", default="10-20")
+    parser.add_argument("--steer-layers", default="5-25")
     parser.add_argument("--steer-router", choices=["no_filter", "force_cat", "force_attr", "force_rel", "rule"], default="force_cat")
     parser.add_argument("--steer-enabled-experts", default="cat")
     parser.add_argument("--steer-alpha", type=float, default=12.0)

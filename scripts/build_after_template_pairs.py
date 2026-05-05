@@ -84,6 +84,22 @@ def strip_yes_no_prefix(answer: str) -> str:
     return text
 
 
+def render_visual_prompt(question: str) -> str:
+    """Render the image-query side in a fuller AFTER-style format."""
+
+    return f"Question: {question}\nPlease answer the question based on the image."
+
+
+def render_trusted_prompt(trusted_factual_text: str, question: str) -> str:
+    """Render the text-only trusted side close to AFTER's factual-description prompt."""
+
+    return (
+        f"The given image depicts the following scene: {trusted_factual_text}\n"
+        "Please directly answer the following question from the image description, "
+        f"without guessing or reasoning. Question: {question}"
+    )
+
+
 def base_row(
     *,
     image: Mapping[str, Any],
@@ -102,8 +118,8 @@ def base_row(
     image_id = int(image["id"])
     identifier = template_pair_id(image_id, subtype, suffix)
     trusted_factual_text = strip_yes_no_prefix(factual_answer)
-    visual_prompt = f"Question: {question}"
-    trusted_prompt = f"Image fact: {trusted_factual_text}\nQuestion: {question}"
+    visual_prompt = render_visual_prompt(question)
+    trusted_prompt = render_trusted_prompt(trusted_factual_text, question)
     return {
         "id": identifier,
         "pair_id": identifier,
@@ -120,6 +136,7 @@ def base_row(
         "objects": objects,
         "factual_fact": factual_fact,
         "counterfactual_fact": counterfactual_fact,
+        "prompt_style": "after_fas_complete_v1",
         "source": "after_template_v1",
     }
 

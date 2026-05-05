@@ -51,7 +51,7 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--steer-enable", action="store_true", help="Run an additional steered pass.")
     parser.add_argument("--steer-vector-path", default="", help="expert_vectors.pt path.")
-    parser.add_argument("--steer-layers", default="10-20", help="Layers to hook, e.g. 10-20.")
+    parser.add_argument("--steer-layers", default="5-25", help="Layers to hook, e.g. 5-25.")
     parser.add_argument("--steer-alpha", type=float, default=1.0, help="Additive steering strength.")
     parser.add_argument("--steer-k-heads", type=int, default=64, help="Global top-K layer-head pairs.")
     parser.add_argument("--steer-head-select", choices=["norm", "random", "all", "expert_map"], default="norm")

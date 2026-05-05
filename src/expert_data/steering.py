@@ -311,7 +311,14 @@ class ExpertSteeringController:
         for layer in self.requested_layers:
             layer_vector = None
             for expert in experts:
-                expert_vector = self.vectors_by_expert_layer[expert][layer]
+                expert_layers = self.vectors_by_expert_layer[expert]
+                if layer not in expert_layers:
+                    raise ValueError(
+                        f"Requested steering layer {layer} is not present in vector file for expert '{expert}'. "
+                        f"Vector file layers are {self.vector_layers}; rebuild vectors with matching --layers "
+                        "or pass --steer-layers that are covered by the vector file."
+                    )
+                expert_vector = expert_layers[layer]
                 layer_vector = expert_vector.clone() if layer_vector is None else layer_vector + expert_vector
             if layer_vector is None:
                 layer_vector = self._torch.zeros(self.num_heads, self.head_dim, dtype=self._torch.float32)

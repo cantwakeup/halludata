@@ -39,7 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--metadata", required=True)
     parser.add_argument("--output", default="data/outputs_after_template_v1/steering/after_template_expert_vectors.pt")
     parser.add_argument("--stats-output", default="data/outputs_after_template_v1/steering/after_template_expert_vectors.stats.json")
-    parser.add_argument("--layers", default="10-20")
+    parser.add_argument("--layers", default="5-25")
     parser.add_argument("--normalize", default="false")
     parser.add_argument("--overwrite", action="store_true")
     return parser.parse_args()
