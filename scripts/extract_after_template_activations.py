@@ -190,6 +190,7 @@ def metadata_row(
         "bbox_b": list(row.get("bbox_b", [])),
         "true_relation": str(row.get("true_relation", "")),
         "queried_relation": str(row.get("queried_relation", "")),
+        "relation_bucket": str(row.get("relation_bucket", "")),
         "template_variant": str(row.get("template_variant", "")),
         "target_token_index_visual": int(branch_meta["target_token_index_visual"]),
         "target_token_index_text": int(branch_meta["target_token_index_text"]),
