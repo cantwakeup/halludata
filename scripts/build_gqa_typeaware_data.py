@@ -1002,6 +1002,46 @@ def validate_rows(rows: list[dict[str, Any]]) -> None:
         seen_ids.add(row["id"])
 
 
+def dedupe_and_uniquify_rows(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], Counter]:
+    """Remove exact duplicate examples and make remaining row ids unique.
+
+    GQA may contain multiple same-named objects in one image, for example two
+    brown goats. Those produce identical diagnostic questions, so we keep one
+    copy and avoid failing the whole build on duplicate ids.
+    """
+
+    skipped: Counter = Counter()
+    seen_signatures: set[tuple[Any, ...]] = set()
+    seen_ids: Counter = Counter()
+    deduped: list[dict[str, Any]] = []
+    for row in rows:
+        signature = (
+            row.get("image_id"),
+            row.get("type"),
+            row.get("subtype"),
+            row.get("question"),
+            row.get("answer"),
+            row.get("trusted_text"),
+            row.get("subject"),
+            row.get("object"),
+            row.get("attribute"),
+            row.get("relation"),
+        )
+        if signature in seen_signatures:
+            skipped["exact_duplicate_examples"] += 1
+            continue
+        seen_signatures.add(signature)
+
+        row = dict(row)
+        base_id = str(row["id"])
+        seen_ids[base_id] += 1
+        if seen_ids[base_id] > 1:
+            skipped["duplicate_ids_renamed"] += 1
+            row["id"] = f"{base_id}_dup{seen_ids[base_id]}"
+        deduped.append(row)
+    return deduped, skipped
+
+
 def print_balance_warning(name: str, rows: list[dict[str, Any]]) -> None:
     counts = Counter(row["answer"] for row in rows)
     total = sum(counts.values())
@@ -1056,6 +1096,9 @@ def main() -> int:
             float(args.attr_count_fraction),
         )
         rel_rows, rel_skipped = build_rel_examples(records, relation_vocab, int(args.max_rel), rng, source)
+        cat_rows, cat_dedupe = dedupe_and_uniquify_rows(cat_rows)
+        attr_rows, attr_dedupe = dedupe_and_uniquify_rows(attr_rows)
+        rel_rows, rel_dedupe = dedupe_and_uniquify_rows(rel_rows)
         rows_by_type = {"cat": cat_rows, "attr": attr_rows, "rel": rel_rows}
         all_rows = cat_rows + attr_rows + rel_rows
         validate_rows(all_rows)
@@ -1067,6 +1110,9 @@ def main() -> int:
         skipped.update({f"cat_{key}": value for key, value in cat_skipped.items()})
         skipped.update({f"attr_{key}": value for key, value in attr_skipped.items()})
         skipped.update({f"rel_{key}": value for key, value in rel_skipped.items()})
+        skipped.update({f"cat_{key}": value for key, value in cat_dedupe.items()})
+        skipped.update({f"attr_{key}": value for key, value in attr_dedupe.items()})
+        skipped.update({f"rel_{key}": value for key, value in rel_dedupe.items()})
         stats = stats_for_examples(
             split=split,
             gqa_root=gqa_root,
