@@ -7,6 +7,7 @@ set -euo pipefail
 # subset. The actual model inference remains delegated to run_steered_benchmark.py.
 
 MODEL_PATH="${MODEL_PATH:-/home/huiwei/sy/models/llava-1.5-7b-hf}"
+PYTHON_BIN="${PYTHON_BIN:-$(command -v python)}"
 VECTOR_PATH="${VECTOR_PATH:-data/gqa_typeaware_v1/steering/gqa_typeaware_expert_vectors.pt}"
 EVAL_SPLIT="${EVAL_SPLIT:-val}"
 EVAL_ROOT="${EVAL_ROOT:-data/gqa_typeaware_v1/${EVAL_SPLIT}_eval}"
@@ -43,7 +44,7 @@ run_logged() {
   shift
   mkdir -p "$out_dir"
   local command="$*"
-  run_gpu_job bash -lc "${command} 2>&1 | tee '${out_dir}/log.txt'; status=\${PIPESTATUS[0]}; cp '${out_dir}/config.json' '${out_dir}/run_config.json' 2>/dev/null || true; exit \$status"
+  run_gpu_job bash -c "${command} 2>&1 | tee '${out_dir}/log.txt'; status=\${PIPESTATUS[0]}; cp '${out_dir}/config.json' '${out_dir}/run_config.json' 2>/dev/null || true; exit \$status"
 }
 
 subset_file() {
@@ -58,7 +59,7 @@ run_baseline() {
   local maybe_overwrite
   maybe_overwrite="$(overwrite_arg)"
   run_logged "$out_dir" \
-    python scripts/run_steered_benchmark.py \
+    "$PYTHON_BIN" scripts/run_steered_benchmark.py \
       --benchmark-data "$data_file" \
       --benchmark-name "gqa_${subset}_${EVAL_SPLIT}" \
       --out-dir "$out_dir" \
@@ -81,7 +82,7 @@ run_steered() {
   local maybe_overwrite
   maybe_overwrite="$(overwrite_arg)"
   run_logged "$out_dir" \
-    python scripts/run_steered_benchmark.py \
+    "$PYTHON_BIN" scripts/run_steered_benchmark.py \
       --benchmark-data "$data_file" \
       --benchmark-name "gqa_${subset}_${EVAL_SPLIT}" \
       --out-dir "$out_dir" \
@@ -124,7 +125,7 @@ done
 
 wait_gpu_jobs
 
-python scripts/summarize_gqa_typeaware_eval.py \
+"$PYTHON_BIN" scripts/summarize_gqa_typeaware_eval.py \
   --runs-root "$RUN_ROOT" \
   --output "$RUN_ROOT/summary.csv" \
   --report-output "$RUN_ROOT/SUMMARY.md"
