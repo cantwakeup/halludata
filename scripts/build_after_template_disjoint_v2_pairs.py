@@ -34,6 +34,7 @@ from expert_data.text_utils import count_conditioned_noun, pluralize_noun
 
 EXPERT_TYPES = ("cat", "attr", "rel")
 SOURCE_NAME = "after_template_disjoint_v2"
+CURRENT_SOURCE_NAME = SOURCE_NAME
 
 RELATION_PHRASES = {
     "left_of": "to the left of",
@@ -166,6 +167,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--coco-instances", required=True, help="COCO instances JSON for cat/attr and optional rel fallback.")
     parser.add_argument("--image-root", required=True, help="COCO image root for cat/attr and optional rel fallback.")
     parser.add_argument("--output-dir", default="data/after_template_disjoint_v2/pairs")
+    parser.add_argument("--source-name", default=SOURCE_NAME, help="Source tag stored in every output row.")
     parser.add_argument("--num-images", type=int, default=5000)
     parser.add_argument("--type-image-ratio", default="cat=0.3,attr=0.3,rel=0.4")
     parser.add_argument("--seed", type=int, default=42)
@@ -187,6 +189,12 @@ def parse_args() -> argparse.Namespace:
         choices=["basic", "inverse", "contrastive_inverse"],
         default="contrastive_inverse",
         help="Template for COCO bbox fallback rows.",
+    )
+    parser.add_argument(
+        "--negative-relation-trusted-text",
+        choices=["contrastive", "positive_only"],
+        default="contrastive",
+        help="For generated no relation queries, use yes+not text or only the positive true relation fact.",
     )
     parser.add_argument("--overwrite", action="store_true")
     return parser.parse_args()
@@ -343,7 +351,7 @@ def make_row(
         "objects": objects,
         "factual_fact": factual_fact,
         "label": label,
-        "source": SOURCE_NAME,
+        "source": CURRENT_SOURCE_NAME,
         "prompt_style": "after_fas_complete_scene_v2",
     }
     if extra:
@@ -383,7 +391,7 @@ def build_cat_rows(
         fact = f"There is {article} {category} in the image."
         rows.append(
             make_row(
-                row_id=f"{SOURCE_NAME}_cat_present_{image_id}_{category.replace(' ', '_')}",
+                row_id=f"{CURRENT_SOURCE_NAME}_cat_present_{image_id}_{category.replace(' ', '_')}",
                 image=image_name,
                 image_id=image_id,
                 question=f"Is there {article} {category} in the image?",
@@ -405,7 +413,7 @@ def build_cat_rows(
         fact = f"There is no {category} in the image."
         rows.append(
             make_row(
-                row_id=f"{SOURCE_NAME}_cat_absent_{image_id}_{category.replace(' ', '_')}",
+                row_id=f"{CURRENT_SOURCE_NAME}_cat_absent_{image_id}_{category.replace(' ', '_')}",
                 image=image_name,
                 image_id=image_id,
                 question=f"Is there {article} {category} in the image?",
@@ -443,7 +451,7 @@ def build_attr_rows(
         fact = str(count_pair["factual_answer"]).strip()
         rows.append(
             make_row(
-                row_id=f"{SOURCE_NAME}_attr_count_{image_id}_{len(rows)}",
+                row_id=f"{CURRENT_SOURCE_NAME}_attr_count_{image_id}_{len(rows)}",
                 image=image_name,
                 image_id=image_id,
                 question=str(count_pair["question"]),
@@ -463,7 +471,7 @@ def build_attr_rows(
             fact = str(color_pair["factual_answer"]).strip()
             rows.append(
                 make_row(
-                    row_id=f"{SOURCE_NAME}_attr_color_{image_id}_{len(rows)}",
+                    row_id=f"{CURRENT_SOURCE_NAME}_attr_color_{image_id}_{len(rows)}",
                     image=image_name,
                     image_id=image_id,
                     question=str(color_pair["question"]),
@@ -847,6 +855,7 @@ def external_relation_rows(
     rng: random.Random,
     desired_images: int,
     progress_every: int,
+    negative_trusted_text: str,
 ) -> dict[str, list[dict[str, Any]]]:
     """Load external relation annotations into row groups keyed by image string."""
 
@@ -895,9 +904,9 @@ def external_relation_rows(
 
         yes_text = relation_scene_text(subject, relation, obj, "yes")
         no_text = relation_scene_text(subject, relation, obj, "no")
-        factual_text = yes_text if label == "yes" else no_text
+        factual_text = yes_text if label == "yes" or negative_trusted_text == "positive_only" else no_text
         row_question = question or relation_question(subject, relation, obj, label)
-        row_id_base = f"{SOURCE_NAME}_external_rel_{index}_{subject}_{relation}_{obj}".replace(" ", "_")
+        row_id_base = f"{CURRENT_SOURCE_NAME}_external_rel_{index}_{subject}_{relation}_{obj}".replace(" ", "_")
         rows = [
             make_row(
                 row_id=row_id_base,
@@ -924,13 +933,14 @@ def external_relation_rows(
         opposite = OPPOSITE_RELATIONS.get(relation)
         if label == "yes" and opposite and max_pairs_per_image > 1:
             opposite_text = relation_scene_text(subject, opposite, obj, "no")
+            trusted_negative_text = yes_text if negative_trusted_text == "positive_only" else f"{yes_text} {opposite_text}"
             rows.append(
                 make_row(
                     row_id=f"{row_id_base}_opposite_no",
                     image=image,
                     image_id=string_field(row, "image_id", "img_id", "id") or image,
                     question=relation_question(subject, opposite, obj, "no"),
-                    trusted_factual_text=f"{yes_text} {opposite_text}",
+                    trusted_factual_text=trusted_negative_text,
                     hallucination_type="rel",
                     subtype=REL_SUBTYPE.get(opposite, "rel_semantic"),
                     objects=[subject, obj],
@@ -989,9 +999,9 @@ def coco_relation_rows(
     for row in rows:
         item = dict(row)
         old_id = str(item.get("id") or item.get("pair_id"))
-        item["id"] = f"{SOURCE_NAME}_coco_bbox_{old_id}"
+        item["id"] = f"{CURRENT_SOURCE_NAME}_coco_bbox_{old_id}"
         item["pair_id"] = item["id"]
-        item["source"] = SOURCE_NAME
+        item["source"] = CURRENT_SOURCE_NAME
         item["relation_source"] = "coco_bbox_fallback"
         item["relation_bucket"] = relation_bucket(str(item.get("true_relation") or item.get("queried_relation") or ""))
         item["prompt_style"] = "after_fas_complete_scene_v2"
@@ -1069,8 +1079,10 @@ def summarize(
 def main() -> int:
     """Build v2 pair splits."""
 
+    global CURRENT_SOURCE_NAME
     args = parse_args()
     try:
+        CURRENT_SOURCE_NAME = str(args.source_name)
         output_dir = resolve_project_path(args.output_dir)
         output_paths = {split: output_dir / f"{split}.jsonl" for split in ("train", "val", "test")}
         stats_path = output_dir / "stats.json"
@@ -1105,6 +1117,7 @@ def main() -> int:
                 rng=rng,
                 desired_images=target_counts["rel"],
                 progress_every=int(args.progress_every),
+                negative_trusted_text=str(args.negative_relation_trusted_text),
             )
 
         def annotations_for(image_id: int) -> list[dict[str, Any]]:
@@ -1216,7 +1229,7 @@ def main() -> int:
         for split, rows in rows_by_split.items():
             write_jsonl(output_paths[split], rows)
         stats = {
-            "source": SOURCE_NAME,
+            "source": CURRENT_SOURCE_NAME,
             "coco_instances": str(resolve_project_path(args.coco_instances)),
             "image_root": str(image_root),
             "relation_image_root": str(relation_image_root),
@@ -1232,6 +1245,7 @@ def main() -> int:
             "relation_fallback": str(args.relation_fallback),
             "relation_bucket_ratio": relation_bucket_ratios,
             "rel_template_variant": str(args.rel_template_variant),
+            "negative_relation_trusted_text": str(args.negative_relation_trusted_text),
             "seed": int(args.seed),
             "outputs": {split: str(path) for split, path in output_paths.items()},
             **summarize(
