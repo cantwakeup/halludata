@@ -480,6 +480,13 @@ def run_official_eval(args: argparse.Namespace) -> tuple[list[dict[str, Any]], d
             return orig_forward(*forward_args, **forward_kwargs)
 
         model.forward = forward_without_cache_position  # type: ignore[method-assign]
+        # force_skip_generation_kwargs_validation
+        model._validate_model_kwargs = lambda model_kwargs: None
+        try:
+            type(model)._validate_model_kwargs = lambda self, model_kwargs: None
+        except Exception:
+            pass
+        print("Applied compatibility patch: skipping transformers model_kwargs validation.")
         print("Applied compatibility patch: dropping cache_position before model.forward().")
     model.eval()
     samples_by_group, manifest = load_samples(args)
