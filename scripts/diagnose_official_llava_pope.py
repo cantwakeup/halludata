@@ -15,6 +15,7 @@ import os
 import random
 import re
 import sys
+import traceback
 from collections import Counter
 from pathlib import Path
 from typing import Any, Iterable, Mapping
@@ -402,8 +403,23 @@ def generate_one(
             max_new_tokens=int(args.max_new_tokens),
             use_cache=True,
         )
-    raw_output = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
-    return raw_output, prompt, {"final_question": final_question, "question_with_image": question_with_image, **template_info}
+    # Official LLaVA/Transformers versions differ on whether `generate`
+    # returns prompt+completion or only completion. Decode the suffix first,
+    # which is what the HF runner does and what POPE parsing expects.
+    prompt_len = int(input_ids.shape[1])
+    generated_ids = output_ids[0][prompt_len:]
+    if generated_ids.numel() == 0:
+        generated_ids = output_ids[0]
+    raw_output = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
+    raw_full_output = tokenizer.decode(output_ids[0], skip_special_tokens=True).strip()
+    return raw_output, prompt, {
+        "final_question": final_question,
+        "question_with_image": question_with_image,
+        "raw_full_output": raw_full_output,
+        "prompt_token_len": prompt_len,
+        "output_token_len": int(output_ids.shape[-1]),
+        **template_info,
+    }
 
 
 def raw_output_path(output_dir: Path, dataset: str, setting: str) -> Path:
@@ -423,6 +439,20 @@ def run_official_eval(args: argparse.Namespace) -> tuple[list[dict[str, Any]], d
     print(f"Official LLaVA model path: {args.model_path}")
     print(f"Official LLaVA model name: {model_name}")
     print(f"Conversation mode: {args.conv_mode}")
+    model_path = Path(str(args.model_path))
+    if model_path.exists():
+        interesting = [
+            "config.json",
+            "tokenizer.model",
+            "tokenizer_config.json",
+            "special_tokens_map.json",
+            "pytorch_model.bin.index.json",
+            "model.safetensors.index.json",
+        ]
+        found = {name: (model_path / name).exists() for name in interesting}
+        print(f"Model path exists. Key files: {json.dumps(found, ensure_ascii=False)}")
+    else:
+        print("Model path does not exist locally; load_pretrained_model will treat it as a model id.")
     try:
         tokenizer, model, image_processor, context_len = llava["load_pretrained_model"](
             str(args.model_path),
@@ -466,9 +496,12 @@ def run_official_eval(args: argparse.Namespace) -> tuple[list[dict[str, Any]], d
                 "full_prompt": full_prompt if index <= 3 else "",
                 "label": sample["label"],
                 "raw_output": raw_output,
+                "raw_full_output": prompt_info.get("raw_full_output", ""),
                 "pred": pred,
                 "is_correct": bool(pred == sample["label"]),
                 "source_file": sample["source_file"],
+                "prompt_token_len": prompt_info.get("prompt_token_len", ""),
+                "output_token_len": prompt_info.get("output_token_len", ""),
             }
             rows.append(row)
             rows_all.append(row)
@@ -630,6 +663,8 @@ def main() -> int:
         hf_groups = collect_hf_rows(args)
         write_summary(args=args, official_rows=official_rows, hf_groups=hf_groups, prompt_examples=prompt_examples)
     except Exception as exc:
+        if os.environ.get("POPE_DIAG_TRACEBACK", "1").strip().lower() not in {"0", "false", "no"}:
+            traceback.print_exc()
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     return 0
