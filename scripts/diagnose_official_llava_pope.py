@@ -77,6 +77,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--progress-every", type=int, default=20)
+    parser.add_argument(
+        "--drop-cache-position",
+        action="store_true",
+        help="Compatibility patch for old official LLaVA code under newer transformers generation APIs.",
+    )
     parser.add_argument("--overwrite", action="store_true")
     return parser.parse_args()
 
@@ -466,6 +471,15 @@ def run_official_eval(args: argparse.Namespace) -> tuple[list[dict[str, Any]], d
             args.model_base,
             model_name,
         )
+    if args.drop_cache_position:
+        orig_forward = model.forward
+
+        def forward_without_cache_position(*forward_args: Any, **forward_kwargs: Any) -> Any:
+            forward_kwargs.pop("cache_position", None)
+            return orig_forward(*forward_args, **forward_kwargs)
+
+        model.forward = forward_without_cache_position  # type: ignore[method-assign]
+        print("Applied compatibility patch: dropping cache_position before model.forward().")
     model.eval()
     samples_by_group, manifest = load_samples(args)
     output_dir = Path(args.output_dir)
