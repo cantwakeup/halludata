@@ -399,6 +399,7 @@ def generate_one(
     with torch.inference_mode():
         output_ids = model.generate(
             input_ids,
+            attention_mask=torch.ones_like(input_ids),
             images=image_tensor,
             image_sizes=[image.size],
             do_sample=False,
