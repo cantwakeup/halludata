@@ -52,6 +52,9 @@ DO_SAMPLE="${DO_SAMPLE:-false}"
 TEMPERATURE="${TEMPERATURE:-0.0}"
 TOP_P="${TOP_P:-1.0}"
 NUM_BEAMS="${NUM_BEAMS:-1}"
+PROMPT_SUFFIX="${PROMPT_SUFFIX:-Please answer this question in one word.}"
+PARSER_MODE="${PARSER_MODE:-first_yes_no}"
+SEED="${SEED:-42}"
 DEVICE="${DEVICE:-cuda:0}"
 PROGRESS_EVERY="${PROGRESS_EVERY:-20}"
 EXPECTED_TORCH="${EXPECTED_TORCH:-2.1.2+cu118}"
@@ -167,6 +170,9 @@ write_root_config() {
   TEMPERATURE="$TEMPERATURE" \
   TOP_P="$TOP_P" \
   NUM_BEAMS="$NUM_BEAMS" \
+  PROMPT_SUFFIX="$PROMPT_SUFFIX" \
+  PARSER_MODE="$PARSER_MODE" \
+  SEED="$SEED" \
   GIT_COMMIT="$git_commit" \
   "$PYTHON_BIN" - <<'PY'
 import json
@@ -180,7 +186,7 @@ payload = {key.lower(): value for key, value in os.environ.items() if key in {
     "METHODS", "ALPHAS", "LIMIT", "CAT_VECTOR_PATH", "CAT_VECTOR_SOURCE",
     "STEER_LAYERS", "STEER_TOPK", "HEAD_SELECT", "PREFILL", "DECODE",
     "APPLY_TO", "MAX_NEW_TOKENS", "DO_SAMPLE", "TEMPERATURE", "TOP_P",
-    "NUM_BEAMS", "GIT_COMMIT",
+    "NUM_BEAMS", "PROMPT_SUFFIX", "PARSER_MODE", "SEED", "GIT_COMMIT",
 }}
 payload["runner"] = "official_llava_multi_gpu_wrapper"
 payload["env_snapshot"] = str(run_root / "env_snapshot")
@@ -214,6 +220,9 @@ echo "[official-pope] settings: $SETTINGS"
 echo "[official-pope] methods: $METHODS"
 echo "[official-pope] alphas: $ALPHAS"
 echo "[official-pope] limit: $LIMIT"
+echo "[official-pope] prompt suffix: $PROMPT_SUFFIX"
+echo "[official-pope] parser mode: $PARSER_MODE"
+echo "[official-pope] seed: $SEED"
 echo "[official-pope] skip completed parts: $SKIP_COMPLETED"
 if truthy "${FORCE_PARALLEL:-false}"; then
   PARALLEL_GPU_MODE=1
@@ -297,6 +306,9 @@ for dataset in $DATASETS; do
       printf "%q %q " "--temperature" "$TEMPERATURE"
       printf "%q %q " "--top-p" "$TOP_P"
       printf "%q %q " "--num-beams" "$NUM_BEAMS"
+      printf "%q %q " "--prompt-suffix" "$PROMPT_SUFFIX"
+      printf "%q %q " "--parser-mode" "$PARSER_MODE"
+      printf "%q %q " "--seed" "$SEED"
       printf "%q %q " "--progress-every" "$PROGRESS_EVERY"
       if [[ -n "$overwrite_arg" ]]; then printf "%q " "$overwrite_arg"; fi
       if [[ -n "$compat_arg" ]]; then printf "%q " "$compat_arg"; fi
