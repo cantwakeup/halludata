@@ -34,6 +34,7 @@ METHODS="${METHODS:-regular cat}"
 ALPHAS="${ALPHAS:-0 0.01 0.025 0.05 0.075 0.1 0.15 0.2 0.25 0.3 0.4 0.5 0.75 1.0 1.25 1.5 2.0}"
 LIMIT="${LIMIT:-0}"
 OVERWRITE="${OVERWRITE:-false}"
+SKIP_COMPLETED="${SKIP_COMPLETED:-false}"
 
 CAT_VECTOR_PATH="${CAT_VECTOR_PATH:-}"
 CAT_VECTOR_SOURCE="${CAT_VECTOR_SOURCE:-existing_hf_or_unknown}"
@@ -68,6 +69,20 @@ contains_word() {
   local haystack=" $1 "
   local needle=" $2 "
   [[ "$haystack" == *"$needle"* ]]
+}
+
+expected_raw_count_per_part() {
+  local count=0
+  local alpha
+  if contains_word "$METHODS" "regular"; then
+    count=$((count + 1))
+  fi
+  if contains_word "$METHODS" "cat"; then
+    for alpha in $ALPHAS; do
+      count=$((count + 1))
+    done
+  fi
+  echo "$count"
 }
 
 shell_quote() {
@@ -199,6 +214,7 @@ echo "[official-pope] settings: $SETTINGS"
 echo "[official-pope] methods: $METHODS"
 echo "[official-pope] alphas: $ALPHAS"
 echo "[official-pope] limit: $LIMIT"
+echo "[official-pope] skip completed parts: $SKIP_COMPLETED"
 if truthy "${FORCE_PARALLEL:-false}"; then
   PARALLEL_GPU_MODE=1
   read -r -a ACTIVE_GPUS <<< "${GPU_POOL//,/ }"
@@ -214,6 +230,15 @@ for dataset in $DATASETS; do
   for setting in $SETTINGS; do
     part_dir="$RUN_ROOT/parts/${dataset}_${setting}"
     mkdir -p "$part_dir"
+    expected_files="$(expected_raw_count_per_part)"
+    existing_files="0"
+    if [[ -d "$part_dir/raw" ]]; then
+      existing_files="$(find "$part_dir/raw" -maxdepth 1 -name "*.jsonl" -type f | wc -l | tr -d '[:space:]')"
+    fi
+    if truthy "$SKIP_COMPLETED" && (( existing_files >= expected_files )); then
+      echo "[official-pope] skip completed part ${dataset}_${setting}: ${existing_files}/${expected_files} raw files"
+      continue
+    fi
     run_script="$part_dir/run.sh"
     log_file="$part_dir/log.txt"
     overwrite_arg=""
