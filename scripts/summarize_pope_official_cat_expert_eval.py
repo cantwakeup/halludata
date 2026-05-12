@@ -275,6 +275,8 @@ def old_hf_compare_rows(rows: list[dict[str, Any]], old_rows: list[dict[str, Any
             {
                 "Dataset": key[0],
                 "Setting": key[1],
+                "Official N": row.get("N", ""),
+                "HF N": old.get("N", ""),
                 "Official Acc": to_float(row.get("Accuracy")),
                 "HF Acc": to_float(old.get("Accuracy")),
                 "Acc Diff": to_float(row.get("Accuracy")) - to_float(old.get("Accuracy")),
@@ -285,6 +287,7 @@ def old_hf_compare_rows(rows: list[dict[str, Any]], old_rows: list[dict[str, Any
                 "HF FP": old.get("FP", ""),
                 "Official Yes Rate": to_float(row.get("Yes Rate")),
                 "HF Yes Rate": to_float(old.get("Yes Rate")),
+                "Same N": str(row.get("N", "")) == str(old.get("N", "")),
             }
         )
     return out
@@ -342,7 +345,23 @@ def write_report(path: Path, rows: list[dict[str, Any]], old_rows: list[dict[str
         "Best Yes Rate",
     ]
     alpha0_headers = ["Dataset", "Setting", "Alpha0 Acc", "Regular Acc", "Acc Diff", "Alpha0 F1", "Regular F1", "F1 Diff", "Alpha0 Invalid", "Regular Invalid"]
-    old_headers = ["Dataset", "Setting", "Official Acc", "HF Acc", "Acc Diff", "Official F1", "HF F1", "F1 Diff", "Official FP", "HF FP", "Official Yes Rate", "HF Yes Rate"]
+    old_headers = [
+        "Dataset",
+        "Setting",
+        "Official N",
+        "HF N",
+        "Same N",
+        "Official Acc",
+        "HF Acc",
+        "Acc Diff",
+        "Official F1",
+        "HF F1",
+        "F1 Diff",
+        "Official FP",
+        "HF FP",
+        "Official Yes Rate",
+        "HF Yes Rate",
+    ]
     configs = read_configs(runs_root)
     best = best_cat_rows(rows)
     alpha0 = alpha_zero_checks(rows)
@@ -381,6 +400,7 @@ def write_report(path: Path, rows: list[dict[str, Any]], old_rows: list[dict[str
             "- `FP` is object hallucination: label=no, pred=yes.",
             "- Invalid predictions are counted as wrong in Accuracy/Precision/Recall/F1.",
             "- `Alpha 0 Check` should be exactly or nearly identical to Regular if the hook adds a zero vector.",
+            "- In `Official Regular vs Old HF Regular`, count fields such as FP are only directly comparable when `Same N=True`.",
             "- If the cat vector was built from the old HF activation space, treat CatExpert results as diagnostic until an official-loader vector is rebuilt.",
         ]
     )
