@@ -199,6 +199,13 @@ echo "[official-pope] settings: $SETTINGS"
 echo "[official-pope] methods: $METHODS"
 echo "[official-pope] alphas: $ALPHAS"
 echo "[official-pope] limit: $LIMIT"
+if truthy "${FORCE_PARALLEL:-false}"; then
+  PARALLEL_GPU_MODE=1
+  read -r -a ACTIVE_GPUS <<< "${GPU_POOL//,/ }"
+  NEXT_GPU_SLOT=0
+  GPU_JOB_PIDS=()
+  echo "[official-pope] FORCE_PARALLEL=true; forcing parallel GPU pool: ${ACTIVE_GPUS[*]}"
+fi
 if contains_word "$METHODS" "cat"; then
   echo "[official-pope] cat vector: $CAT_VECTOR_PATH"
 fi
