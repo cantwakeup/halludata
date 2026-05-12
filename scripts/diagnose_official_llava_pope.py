@@ -54,6 +54,7 @@ HF_RAW_NAMES = {
 DATASETS = ("MSCOCO", "GQA")
 SETTINGS = ("random", "popular", "adversarial")
 DEFAULT_PROMPT_SUFFIX = "Please answer this question in one word."
+PARSER_MODES = ("first_yes_no", "contains_yes_no_octopus_like")
 
 
 def parse_args() -> argparse.Namespace:
@@ -68,8 +69,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gqa-image-root", default="/home/huiwei/sy/sy_data/GQA/raw/images/images")
     parser.add_argument("--hf-runs-root", default="data/pope_cat_expert_eval/full_alpha_sweep")
     parser.add_argument("--output-dir", default="data/pope_cat_expert_eval/official_llava_diagnostics")
-    parser.add_argument("--limit", type=int, default=100)
+    parser.add_argument("--limit", type=int, default=100, help="0 means full file.")
     parser.add_argument("--prompt-suffix", default=DEFAULT_PROMPT_SUFFIX)
+    parser.add_argument("--parser-mode", default="first_yes_no", choices=PARSER_MODES)
+    parser.add_argument("--do-sample", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top-p", type=float, default=1.0)
     parser.add_argument("--num-beams", type=int, default=1)
@@ -157,6 +160,23 @@ def parse_first_yes_no(text: Any) -> str:
     if not matches:
         return "invalid"
     return sorted(matches)[0][1]
+
+
+def parse_prediction(text: Any, label: str, parser_mode: str) -> str:
+    if parser_mode == "first_yes_no":
+        return parse_first_yes_no(text)
+    if parser_mode == "contains_yes_no_octopus_like":
+        generated = str(text).strip().lower()
+        label = str(label).strip().lower()
+        # Mirrors the Octopus eval_pope.py label-conditioned substring logic:
+        # yes-labeled rows are scored correct if generated text contains "yes";
+        # no-labeled rows are scored correct if generated text contains "no".
+        if label == "yes":
+            return "yes" if "yes" in generated else "no"
+        if label == "no":
+            return "no" if "no" in generated else "yes"
+        return "invalid"
+    raise ValueError(f"Unsupported parser mode: {parser_mode}")
 
 
 def metric_div(num: float, den: float) -> float:
@@ -269,7 +289,8 @@ def load_samples(args: argparse.Namespace) -> tuple[dict[tuple[str, str], list[d
             raw_rows = read_json_or_jsonl(path)
             rows = []
             missing = []
-            for index, row in enumerate(raw_rows[: int(args.limit)]):
+            selected_rows = raw_rows if int(args.limit) <= 0 else raw_rows[: int(args.limit)]
+            for index, row in enumerate(selected_rows):
                 question = str(first_present(row, ("question", "text", "query", "prompt"), "")).strip()
                 label = normalize_label(first_present(row, ("label", "answer", "gt_answer", "ground_truth", "target"), ""))
                 image_path = resolve_image_path(dataset, row, image_root)
@@ -402,7 +423,7 @@ def generate_one(
             attention_mask=torch.ones_like(input_ids),
             images=image_tensor,
             image_sizes=[image.size],
-            do_sample=False,
+            do_sample=bool(args.do_sample),
             temperature=float(args.temperature),
             top_p=float(args.top_p),
             num_beams=int(args.num_beams),
@@ -440,6 +461,9 @@ def hf_raw_path(hf_runs_root: Path, dataset: str, setting: str) -> Path:
 def run_official_eval(args: argparse.Namespace) -> tuple[list[dict[str, Any]], dict[str, Any], list[dict[str, Any]]]:
     random.seed(int(args.seed))
     llava = import_official_llava(str(args.llava_repo_path))
+    llava["torch"].manual_seed(int(args.seed))
+    if llava["torch"].cuda.is_available():
+        llava["torch"].cuda.manual_seed_all(int(args.seed))
     llava["disable_torch_init"]()
     model_name = llava["get_model_name_from_path"](str(args.model_path))
     print(f"Official LLaVA model path: {args.model_path}")
@@ -506,7 +530,7 @@ def run_official_eval(args: argparse.Namespace) -> tuple[list[dict[str, Any]], d
                 args=args,
                 llava=llava,
             )
-            pred = parse_first_yes_no(raw_output)
+            pred = parse_prediction(raw_output, sample["label"], str(args.parser_mode))
             row = {
                 "dataset": dataset,
                 "setting": setting,
@@ -521,6 +545,7 @@ def run_official_eval(args: argparse.Namespace) -> tuple[list[dict[str, Any]], d
                 "raw_full_output": prompt_info.get("raw_full_output", ""),
                 "pred": pred,
                 "is_correct": bool(pred == sample["label"]),
+                "parser_mode": str(args.parser_mode),
                 "source_file": sample["source_file"],
                 "prompt_token_len": prompt_info.get("prompt_token_len", ""),
                 "output_token_len": prompt_info.get("output_token_len", ""),
@@ -555,10 +580,12 @@ def run_official_eval(args: argparse.Namespace) -> tuple[list[dict[str, Any]], d
         "conv_mode": str(args.conv_mode),
         "limit": int(args.limit),
         "prompt_suffix": str(args.prompt_suffix),
+        "parser_mode": str(args.parser_mode),
+        "seed": int(args.seed),
         "decode": {
             "temperature": float(args.temperature),
             "top_p": float(args.top_p),
-            "do_sample": False,
+            "do_sample": bool(args.do_sample),
             "num_beams": int(args.num_beams),
             "max_new_tokens": int(args.max_new_tokens),
             "use_cache": True,
@@ -584,7 +611,8 @@ def collect_hf_rows(args: argparse.Namespace) -> dict[tuple[str, str], list[dict
             if not path.exists():
                 groups[(dataset, setting)] = []
                 continue
-            rows = read_jsonl_fallback(path)[: int(args.limit)]
+            all_rows = read_jsonl_fallback(path)
+            rows = all_rows if int(args.limit) <= 0 else all_rows[: int(args.limit)]
             groups[(dataset, setting)] = rows
     return groups
 
@@ -647,9 +675,10 @@ def write_summary(
         f"- Limit per dataset/setting: `{args.limit}`",
         f"- HF comparison root: `{args.hf_runs_root}`",
         f"- Prompt suffix: `{args.prompt_suffix}`",
+        f"- Parser mode: `{args.parser_mode}`",
         f"- Conversation mode: `{args.conv_mode}`",
         "- Steering/hooks: disabled; Regular baseline only.",
-        "- Decode: `temperature=0`, `top_p=1.0`, `do_sample=False`, `num_beams=1`, `max_new_tokens=5` unless overridden.",
+        f"- Decode: `temperature={args.temperature}`, `top_p={args.top_p}`, `do_sample={bool(args.do_sample)}`, `num_beams={args.num_beams}`, `max_new_tokens={args.max_new_tokens}`.",
         "",
         "## Main Comparison",
         "",

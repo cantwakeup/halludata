@@ -38,6 +38,7 @@ from expert_data.steering import ExpertSteeringController, normalize_bool
 
 
 PROMPT_SUFFIX = "Please answer this question in one word."
+PARSER_MODES = ("first_yes_no", "contains_yes_no_octopus_like")
 YES_WORDS = {"yes", "y", "true", "1"}
 NO_WORDS = {"no", "n", "false", "0"}
 DATASET_ALIASES = {
@@ -97,6 +98,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top-p", type=float, default=1.0)
     parser.add_argument("--num-beams", type=int, default=1)
+    parser.add_argument("--prompt-suffix", default=PROMPT_SUFFIX)
+    parser.add_argument("--parser-mode", default="first_yes_no", choices=PARSER_MODES)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--progress-every", type=int, default=20)
     parser.add_argument("--overwrite", action="store_true")
@@ -212,11 +215,14 @@ def first_present(row: Mapping[str, Any], keys: Iterable[str], default: Any = ""
     return default
 
 
-def ensure_question_prompt(question: str) -> str:
+def ensure_question_prompt(question: str, suffix: str = PROMPT_SUFFIX) -> str:
     question = str(question).strip()
-    if question.lower().endswith(PROMPT_SUFFIX.lower()):
+    suffix = str(suffix).strip()
+    if not suffix:
         return question
-    return f"{question} {PROMPT_SUFFIX}"
+    if question.lower().endswith(suffix.lower()):
+        return question
+    return f"{question} {suffix}"
 
 
 def image_roots_for_dataset(dataset: str, args: argparse.Namespace) -> list[Path]:
@@ -295,7 +301,7 @@ def load_pope_samples(args: argparse.Namespace) -> tuple[dict[tuple[str, str], l
                     "image_id": image_id,
                     "image_path": image_path,
                     "question": question,
-                    "prompt": ensure_question_prompt(question),
+                    "prompt": ensure_question_prompt(question, str(args.prompt_suffix)),
                     "label": label,
                     "source_file": str(source_file),
                     "raw": dict(row),
@@ -324,6 +330,23 @@ def parse_first_yes_no(text: str) -> str:
     if not matches:
         return "invalid"
     return sorted(matches)[0][1]
+
+
+def parse_prediction(text: str, label: str, parser_mode: str) -> str:
+    if parser_mode == "first_yes_no":
+        return parse_first_yes_no(text)
+    if parser_mode == "contains_yes_no_octopus_like":
+        generated = str(text).strip().lower()
+        label = str(label).strip().lower()
+        # This mirrors Octopus eval_pope.py's label-conditioned substring
+        # scoring: for yes-labeled rows, absence of "yes" counts as no; for
+        # no-labeled rows, absence of "no" counts as yes.
+        if label == "yes":
+            return "yes" if "yes" in generated else "no"
+        if label == "no":
+            return "no" if "no" in generated else "yes"
+        return "invalid"
+    raise ValueError(f"Unsupported parser mode: {parser_mode}")
 
 
 def import_official_llava(llava_repo_path: str) -> OfficialLlavaImports:
@@ -505,6 +528,7 @@ class OfficialLlavaPopeGenerator:
                 "prompt_token_len": prompt_len,
                 "output_token_len": output_token_len,
                 "raw_full_output": raw_full_output,
+                "parser_mode": str(self.args.parser_mode),
             }
         )
         return raw_output, prompt_info
@@ -518,8 +542,8 @@ def prediction_row(
     raw_output: str,
     prompt_info: Mapping[str, Any],
 ) -> dict[str, Any]:
-    pred = parse_first_yes_no(raw_output)
     label = str(sample["label"])
+    pred = parse_prediction(raw_output, label, str(prompt_info.get("parser_mode", "first_yes_no")))
     return {
         "dataset": sample["dataset"],
         "setting": sample["setting"],
@@ -535,6 +559,7 @@ def prediction_row(
         "raw_full_output": prompt_info.get("raw_full_output", ""),
         "pred": pred,
         "is_correct": bool(pred == label),
+        "parser_mode": prompt_info.get("parser_mode", ""),
         "prompt_token_len": prompt_info.get("prompt_token_len", ""),
         "output_token_len": prompt_info.get("output_token_len", ""),
     }
@@ -668,9 +693,14 @@ def main() -> int:
         alpha_values = parse_alpha_values(args)
         samples_by_group, pope_manifest = load_pope_samples(args)
         llava = import_official_llava(str(args.llava_repo_path))
+        llava.torch.manual_seed(int(args.seed))
+        if llava.torch.cuda.is_available():
+            llava.torch.cuda.manual_seed_all(int(args.seed))
         tokenizer, model, image_processor, context_len, model_name = load_official_model(args, llava)
 
-        print(f"Prompt template: '{{question}} {PROMPT_SUFFIX}'")
+        print(f"Prompt template: '{{question}} {args.prompt_suffix}'")
+        print(f"Prompt suffix: {args.prompt_suffix!r}")
+        print(f"Parser mode: {args.parser_mode}")
         print(
             "Decoding: "
             f"do_sample={normalize_bool(args.do_sample)}, temperature={args.temperature}, top_p={args.top_p}, "
@@ -746,7 +776,8 @@ def main() -> int:
             "settings": [canonical_setting(item) for item in args.settings],
             "methods": methods,
             "alphas": alpha_values,
-            "prompt_template": f"{{question}} {PROMPT_SUFFIX}",
+            "prompt_template": f"{{question}} {args.prompt_suffix}",
+            "parser_mode": str(args.parser_mode),
             "decode": {
                 "do_sample": normalize_bool(args.do_sample),
                 "temperature": float(args.temperature),
@@ -754,6 +785,7 @@ def main() -> int:
                 "num_beams": int(args.num_beams),
                 "max_new_tokens": int(args.max_new_tokens),
             },
+            "seed": int(args.seed),
             "steering": {
                 "layers": str(args.layers),
                 "topk": int(args.topk),
