@@ -35,6 +35,7 @@ ALPHAS="${ALPHAS:-0 0.01 0.025 0.05 0.075 0.1 0.15 0.2 0.25 0.3 0.4 0.5 0.75 1.0
 LIMIT="${LIMIT:-0}"
 OVERWRITE="${OVERWRITE:-false}"
 SKIP_COMPLETED="${SKIP_COMPLETED:-false}"
+SKIP_EXISTING_FILES="${SKIP_EXISTING_FILES:-false}"
 
 CAT_VECTOR_PATH="${CAT_VECTOR_PATH:-}"
 CAT_VECTOR_SOURCE="${CAT_VECTOR_SOURCE:-existing_hf_or_unknown}"
@@ -157,6 +158,8 @@ write_root_config() {
   METHODS="$METHODS" \
   ALPHAS="$ALPHAS" \
   LIMIT="$LIMIT" \
+  SKIP_COMPLETED="$SKIP_COMPLETED" \
+  SKIP_EXISTING_FILES="$SKIP_EXISTING_FILES" \
   CAT_VECTOR_PATH="$CAT_VECTOR_PATH" \
   CAT_VECTOR_SOURCE="$CAT_VECTOR_SOURCE" \
   STEER_LAYERS="$STEER_LAYERS" \
@@ -183,7 +186,7 @@ run_root = Path(os.environ["RUN_ROOT"])
 payload = {key.lower(): value for key, value in os.environ.items() if key in {
     "PYTHON_BIN", "MODEL_PATH", "MODEL_BASE", "LLAVA_REPO", "CONV_MODE",
     "POPE_ROOT", "COCO_IMAGE_ROOT", "GQA_IMAGE_ROOT", "DATASETS", "SETTINGS",
-    "METHODS", "ALPHAS", "LIMIT", "CAT_VECTOR_PATH", "CAT_VECTOR_SOURCE",
+    "METHODS", "ALPHAS", "LIMIT", "SKIP_COMPLETED", "SKIP_EXISTING_FILES", "CAT_VECTOR_PATH", "CAT_VECTOR_SOURCE",
     "STEER_LAYERS", "STEER_TOPK", "HEAD_SELECT", "PREFILL", "DECODE",
     "APPLY_TO", "MAX_NEW_TOKENS", "DO_SAMPLE", "TEMPERATURE", "TOP_P",
     "NUM_BEAMS", "PROMPT_SUFFIX", "PARSER_MODE", "SEED", "GIT_COMMIT",
@@ -224,6 +227,7 @@ echo "[official-pope] prompt suffix: $PROMPT_SUFFIX"
 echo "[official-pope] parser mode: $PARSER_MODE"
 echo "[official-pope] seed: $SEED"
 echo "[official-pope] skip completed parts: $SKIP_COMPLETED"
+echo "[official-pope] skip existing raw files: $SKIP_EXISTING_FILES"
 if truthy "${FORCE_PARALLEL:-false}"; then
   PARALLEL_GPU_MODE=1
   read -r -a ACTIVE_GPUS <<< "${GPU_POOL//,/ }"
@@ -251,11 +255,15 @@ for dataset in $DATASETS; do
     run_script="$part_dir/run.sh"
     log_file="$part_dir/log.txt"
     overwrite_arg=""
+    skip_existing_arg=""
     compat_arg=""
     model_base_args=()
     cat_args=()
     if truthy "$OVERWRITE"; then
       overwrite_arg="--overwrite"
+    fi
+    if truthy "$SKIP_EXISTING_FILES"; then
+      skip_existing_arg="--skip-existing"
     fi
     if truthy "$COMPAT_NEW_TRANSFORMERS"; then
       compat_arg="--compat-new-transformers"
@@ -311,6 +319,7 @@ for dataset in $DATASETS; do
       printf "%q %q " "--seed" "$SEED"
       printf "%q %q " "--progress-every" "$PROGRESS_EVERY"
       if [[ -n "$overwrite_arg" ]]; then printf "%q " "$overwrite_arg"; fi
+      if [[ -n "$skip_existing_arg" ]]; then printf "%q " "$skip_existing_arg"; fi
       if [[ -n "$compat_arg" ]]; then printf "%q " "$compat_arg"; fi
       echo
     } > "$run_script"

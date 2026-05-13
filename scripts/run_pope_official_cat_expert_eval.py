@@ -102,6 +102,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--parser-mode", default="first_yes_no", choices=PARSER_MODES)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--progress-every", type=int, default=20)
+    parser.add_argument("--skip-existing", action="store_true", help="Skip a raw output file if it already exists.")
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument(
         "--compat-new-transformers",
@@ -732,7 +733,10 @@ def main() -> int:
         if "regular" in methods:
             for (dataset, setting), samples in samples_by_group.items():
                 output_path = raw_dir / output_name(dataset, setting, "Regular", None)
-                run_group(generator=generator, samples=samples, method="Regular", alpha=None, output_path=output_path, progress_every=int(args.progress_every))
+                if args.skip_existing and output_path.exists():
+                    print(f"Skip existing raw predictions: {output_path}")
+                else:
+                    run_group(generator=generator, samples=samples, method="Regular", alpha=None, output_path=output_path, progress_every=int(args.progress_every))
                 raw_files.append(str(output_path))
 
         if "cat" in methods:
@@ -756,7 +760,10 @@ def main() -> int:
                 controller.alpha = float(alpha)
                 for (dataset, setting), samples in samples_by_group.items():
                     output_path = raw_dir / output_name(dataset, setting, "CatExpert", alpha)
-                    run_group(generator=generator, samples=samples, method="CatExpert", alpha=float(alpha), output_path=output_path, progress_every=int(args.progress_every))
+                    if args.skip_existing and output_path.exists():
+                        print(f"Skip existing raw predictions: {output_path}")
+                    else:
+                        run_group(generator=generator, samples=samples, method="CatExpert", alpha=float(alpha), output_path=output_path, progress_every=int(args.progress_every))
                     raw_files.append(str(output_path))
 
         config = {
