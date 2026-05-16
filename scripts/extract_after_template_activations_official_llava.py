@@ -385,11 +385,11 @@ class OfficialLlavaActivationExtractor:
         image_tensor = self.image_processor.preprocess(image, return_tensors="pt")["pixel_values"][0].unsqueeze(0)
         device = model_device(self.model)
         image_dtype = model_float_dtype(self.model, self.torch)
+        # Match the already-validated official POPE runner: LLaVA-1.5 expects
+        # `images` here, and older forks can mis-handle explicit image_sizes.
         inputs = {
             "input_ids": input_ids.to(device),
-            "attention_mask": self.torch.ones_like(input_ids).to(device),
             "images": image_tensor.to(device=device, dtype=image_dtype),
-            "image_sizes": [image.size],
         }
         return inputs, int(input_ids.shape[1] - 1), image.size
 
