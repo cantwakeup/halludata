@@ -79,6 +79,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-samples", type=int, default=0)
     parser.add_argument("--progress-every", type=int, default=10)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--num-shards", type=int, default=1, help="Total number of extraction shards.")
+    parser.add_argument("--shard-index", type=int, default=0, help="This process's zero-based shard index.")
     parser.add_argument("--compat-new-transformers", action="store_true")
     parser.add_argument("--overwrite", action="store_true")
     return parser.parse_args()
@@ -575,17 +577,30 @@ def stack_activation_items(items: list[Any], storage_dtype: str) -> Any:
     return torch.stack(items, dim=0).to(torch_dtype(torch, storage_dtype)).cpu()
 
 
-def selected_rows(rows: list[dict[str, Any]], allowed_types: set[str], max_samples: int) -> list[tuple[int, dict[str, Any]]]:
+def selected_rows(
+    rows: list[dict[str, Any]],
+    allowed_types: set[str],
+    max_samples: int,
+    *,
+    num_shards: int,
+    shard_index: int,
+) -> list[tuple[int, dict[str, Any]]]:
     """Filter rows by hallucination type while preserving original row indices."""
 
-    selected: list[tuple[int, dict[str, Any]]] = []
+    filtered: list[tuple[int, dict[str, Any]]] = []
     for row_index, row in enumerate(rows):
         if allowed_types and str(row.get("hallucination_type")) not in allowed_types:
             continue
-        selected.append((row_index, row))
-        if int(max_samples) > 0 and len(selected) >= int(max_samples):
+        filtered.append((row_index, row))
+        if int(max_samples) > 0 and len(filtered) >= int(max_samples):
             break
-    return selected
+    if int(num_shards) <= 1:
+        return filtered
+    return [
+        item
+        for filtered_position, item in enumerate(filtered)
+        if filtered_position % int(num_shards) == int(shard_index)
+    ]
 
 
 def main() -> int:
@@ -608,13 +623,23 @@ def main() -> int:
             raise FileExistsError(f"Output exists: {output_path}. Pass --overwrite to replace.")
         if not image_root.exists():
             raise FileNotFoundError(f"Image root does not exist: {image_root}")
+        if int(args.num_shards) < 1:
+            raise ValueError("--num-shards must be >= 1")
+        if int(args.shard_index) < 0 or int(args.shard_index) >= int(args.num_shards):
+            raise ValueError("--shard-index must satisfy 0 <= shard_index < num_shards")
 
         allowed_types = {str(item).strip() for item in args.types if str(item).strip()}
         unsupported = sorted(allowed_types - {"cat", "attr", "rel"})
         if unsupported:
             raise ValueError(f"Unsupported --types values: {unsupported}")
         rows = read_jsonl(pair_path)
-        row_items = selected_rows(rows, allowed_types, int(args.max_samples))
+        row_items = selected_rows(
+            rows,
+            allowed_types,
+            int(args.max_samples),
+            num_shards=int(args.num_shards),
+            shard_index=int(args.shard_index),
+        )
         if not row_items:
             raise ValueError("No rows selected for extraction.")
         for source_row_index, row in row_items:
@@ -716,6 +741,8 @@ def main() -> int:
             "shape": [len(metadata_rows), *(first_shape or [0, 0, 0])],
             "dtype": str(args.storage_dtype),
             "seed": int(args.seed),
+            "num_shards": int(args.num_shards),
+            "shard_index": int(args.shard_index),
             "created_at": utc_now_iso(),
             "notes": [
                 "Official LLaVA conv_templates/tokenizer_image_token/image_processor extraction",

@@ -81,7 +81,49 @@ bash scripts/run_pope_official_cat_expert_sweep.sh
 
 ## 4. Full Extract
 
-After the smoke run confirms shape and nonzero effect, run full `cat` extraction:
+After the smoke run confirms shape and nonzero effect, run full `cat`
+extraction. Prefer the 4-GPU sharded version below.
+
+```bash
+mkdir -p data/after_template_disjoint_v2/official_llava_activations/logs
+
+for shard in 0 1 2 3; do
+  CUDA_VISIBLE_DEVICES=${shard} python scripts/extract_after_template_activations_official_llava.py \
+    --model-path /home/huiwei/sy/models/llava-v1.5-7b-official-clean \
+    --llava-repo-path /home/huiwei/sy/LLaVA-official-clean \
+    --conv-mode llava_v1 \
+    --pair-file data/after_template_disjoint_v2/pairs/train.jsonl \
+    --image-root /home/huiwei/sy/sy_data/COCO2014/train2014 \
+    --instances-json /home/huiwei/sy/sy_data/COCO2014/annotations/instances_train2014.json \
+    --types cat \
+    --trusted-input-mode text_only \
+    --output data/after_template_disjoint_v2/official_llava_activations/cat_train_shard${shard}.pt \
+    --metadata-output data/after_template_disjoint_v2/official_llava_activations/cat_train_shard${shard}.meta.jsonl \
+    --num-shards 4 \
+    --shard-index ${shard} \
+    --progress-every 20 \
+    --seed 42 \
+    --overwrite \
+    > data/after_template_disjoint_v2/official_llava_activations/logs/cat_train_shard${shard}.log 2>&1 &
+done
+wait
+```
+
+Merge the four shards:
+
+```bash
+python scripts/merge_after_template_activation_files.py \
+  --activation-files \
+    data/after_template_disjoint_v2/official_llava_activations/cat_train_shard0.pt \
+    data/after_template_disjoint_v2/official_llava_activations/cat_train_shard1.pt \
+    data/after_template_disjoint_v2/official_llava_activations/cat_train_shard2.pt \
+    data/after_template_disjoint_v2/official_llava_activations/cat_train_shard3.pt \
+  --output data/after_template_disjoint_v2/official_llava_activations/cat_train.pt \
+  --metadata-output data/after_template_disjoint_v2/official_llava_activations/cat_train.meta.jsonl \
+  --overwrite
+```
+
+Single-GPU fallback:
 
 ```bash
 python scripts/extract_after_template_activations_official_llava.py \
