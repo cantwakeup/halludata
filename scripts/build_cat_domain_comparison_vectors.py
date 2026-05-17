@@ -53,6 +53,15 @@ def parse_args() -> argparse.Namespace:
         help="How to combine COCO/GQA cat vectors for the mixed direction.",
     )
     parser.add_argument(
+        "--mixed-scale",
+        choices=("mean_source_norm", "coco_norm", "gqa_norm", "unit_norm", "raw_mean_norm"),
+        default="mean_source_norm",
+        help=(
+            "Flat-norm scale for the mixed vector after choosing its direction. "
+            "mean_source_norm keeps mixed alpha comparable to raw COCO/GQA vectors."
+        ),
+    )
+    parser.add_argument(
         "--layers",
         default="intersection",
         help="Layer spec to keep, or 'intersection' for shared source layers.",
@@ -145,14 +154,39 @@ def flat_normalize(vector: Any) -> Any:
     return vector.float() / norm
 
 
-def build_mixed(coco: Any, gqa: Any, mode: str) -> Any:
+def flat_norm(vector: Any) -> float:
+    return float(vector.flatten().float().norm().item())
+
+
+def scale_to_flat_norm(vector: Any, target_norm: float) -> Any:
+    return flat_normalize(vector) * float(target_norm)
+
+
+def mixed_target_norm(coco: Any, gqa: Any, raw_mean: Any, scale: str) -> float:
+    coco_norm = flat_norm(coco)
+    gqa_norm = flat_norm(gqa)
+    if scale == "mean_source_norm":
+        return (coco_norm + gqa_norm) / 2.0
+    if scale == "coco_norm":
+        return coco_norm
+    if scale == "gqa_norm":
+        return gqa_norm
+    if scale == "unit_norm":
+        return 1.0
+    if scale == "raw_mean_norm":
+        return flat_norm(raw_mean)
+    raise ValueError(f"Unsupported mixed scale: {scale}")
+
+
+def build_mixed(coco: Any, gqa: Any, mode: str, scale: str) -> Any:
+    raw_mean = (coco.float() + gqa.float()) / 2.0
     if mode == "raw_mean":
-        mixed = (coco.float() + gqa.float()) / 2.0
+        mixed_direction = raw_mean
     elif mode == "unit_mean":
-        mixed = (flat_normalize(coco) + flat_normalize(gqa)) / 2.0
+        mixed_direction = (flat_normalize(coco) + flat_normalize(gqa)) / 2.0
     else:
         raise ValueError(f"Unsupported mix mode: {mode}")
-    return flat_normalize(mixed)
+    return scale_to_flat_norm(mixed_direction, mixed_target_norm(coco, gqa, raw_mean, scale))
 
 
 def vector_summary(vector: Any) -> dict[str, float | list[int]]:
@@ -210,6 +244,7 @@ def output_payload(
         "coco_vector": str(resolve_path(args.coco_vector)),
         "gqa_vector": str(resolve_path(args.gqa_vector)),
         "mix_mode": str(args.mix_mode),
+        "mixed_scale": str(args.mixed_scale),
         "layers": layers,
     }
     if metadata_extra:
@@ -351,7 +386,7 @@ def main() -> int:
         if list(coco_cat.shape) != list(gqa_cat.shape):
             raise ValueError(f"Aligned vector shapes differ: {list(coco_cat.shape)} vs {list(gqa_cat.shape)}")
 
-        mixed_cat = build_mixed(coco_cat, gqa_cat, str(args.mix_mode))
+        mixed_cat = build_mixed(coco_cat, gqa_cat, str(args.mix_mode), str(args.mixed_scale))
         vectors = {"coco_cat": coco_cat, "gqa_cat": gqa_cat, "mixed_cat": mixed_cat}
 
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -388,7 +423,9 @@ def main() -> int:
                 mixed_vector=mixed_cat,
                 layers=layers,
                 args=args,
-                metadata_extra={"mixed_definition": f"{args.mix_mode}(coco_cat, gqa_cat)"},
+                metadata_extra={
+                    "mixed_definition": f"{args.mix_mode}(coco_cat, gqa_cat) scaled by {args.mixed_scale}",
+                },
             ),
             outputs["mixed_cat"],
         )

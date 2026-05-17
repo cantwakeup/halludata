@@ -24,6 +24,7 @@ RUN_ROOT_BASE="${RUN_ROOT_BASE:-$ROOT/runs}"
 COCO_VECTOR="${COCO_VECTOR:-data/outputs_after_template_disjoint_v2/steering/after_template_disjoint_v2_expert_vectors.pt}"
 GQA_VECTOR="${GQA_VECTOR:-data/gqa_typeaware_v1/steering/gqa_typeaware_expert_vectors.pt}"
 MIX_MODE="${MIX_MODE:-unit_mean}"
+MIXED_SCALE="${MIXED_SCALE:-mean_source_norm}"
 VECTOR_LAYERS="${VECTOR_LAYERS:-intersection}"
 
 DATASETS="${DATASETS:-MSCOCO GQA}"
@@ -55,6 +56,7 @@ GPU_POOL="${GPU_POOL:-0,1,2,3}"
 FORCE_PARALLEL="${FORCE_PARALLEL:-true}"
 OVERWRITE="${OVERWRITE:-false}"
 VECTOR_OVERWRITE="${VECTOR_OVERWRITE:-true}"
+CHILD_OVERWRITE="${CHILD_OVERWRITE:-true}"
 SKIP_COMPLETED="${SKIP_COMPLETED:-true}"
 SKIP_EXISTING_FILES="${SKIP_EXISTING_FILES:-true}"
 COMPAT_NEW_TRANSFORMERS="${COMPAT_NEW_TRANSFORMERS:-false}"
@@ -77,6 +79,7 @@ echo "[cat-domain] building compatible vector bundles"
   --gqa-vector "$GQA_VECTOR" \
   --output-dir "$VECTOR_DIR" \
   --mix-mode "$MIX_MODE" \
+  --mixed-scale "$MIXED_SCALE" \
   --layers "$VECTOR_LAYERS" \
   "${build_overwrite_arg[@]}"
 
@@ -116,7 +119,7 @@ for source in coco_cat gqa_cat mixed_cat; do
   SEED="$SEED" \
   GPU_POOL="$GPU_POOL" \
   FORCE_PARALLEL="$FORCE_PARALLEL" \
-  OVERWRITE="$OVERWRITE" \
+  OVERWRITE="$CHILD_OVERWRITE" \
   SKIP_COMPLETED="$SKIP_COMPLETED" \
   SKIP_EXISTING_FILES="$SKIP_EXISTING_FILES" \
   COMPAT_NEW_TRANSFORMERS="$COMPAT_NEW_TRANSFORMERS" \
