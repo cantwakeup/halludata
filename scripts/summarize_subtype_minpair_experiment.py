@@ -70,12 +70,20 @@ def best_eval_rows(rows: list[Mapping[str, str]]) -> list[dict[str, Any]]:
 def matched_label(vector: str, subset: str) -> str:
     if "g_all" in vector:
         return "global"
-    if subset.startswith("cat_") and "cat_" in vector:
-        return "matched"
-    if subset.startswith("attr_") and subset in vector:
-        return "matched"
-    if subset.startswith("rel_") and subset in vector:
-        return "matched"
+    if vector.startswith("g_cat") and subset.startswith("cat_"):
+        return "type_matched"
+    if vector.startswith("g_attr") and subset.startswith("attr_"):
+        return "type_matched"
+    if vector.startswith("g_rel") and subset.startswith("rel_"):
+        return "type_matched"
+    if f"d_{subset}_" in vector or vector.startswith(f"d_{subset}_"):
+        return "subtype_matched"
+    if subset.startswith("cat_") and "_cat_" in vector:
+        return "type_matched"
+    if subset.startswith("attr_") and "_attr_" in vector:
+        return "type_matched"
+    if subset.startswith("rel_") and "_rel_" in vector:
+        return "type_matched"
     return "mismatched"
 
 
@@ -148,14 +156,19 @@ def main() -> int:
     lines.append("")
     lines.append("## 7. Key Conclusion")
     if eval_rows:
-        matched = [row for row in matched_matrix(eval_rows) if row["match"] == "matched"]
+        matched_rows = matched_matrix(eval_rows)
+        matched = [row for row in matched_rows if row["match"] in {"subtype_matched", "type_matched"}]
+        subtype_matched = [row for row in matched_rows if row["match"] == "subtype_matched"]
         mismatched = [row for row in matched_matrix(eval_rows) if row["match"] == "mismatched"]
         matched_f1 = max((float(row["f1"]) for row in matched), default=0.0)
+        subtype_f1 = max((float(row["f1"]) for row in subtype_matched), default=0.0)
         mismatched_f1 = max((float(row["f1"]) for row in mismatched), default=0.0)
-        if matched_f1 > mismatched_f1:
-            lines.append(f"- Best matched F1 ({matched_f1:.4f}) is higher than best mismatched F1 ({mismatched_f1:.4f}); this supports subtype-specific signal.")
+        if subtype_f1 > mismatched_f1:
+            lines.append(f"- Best subtype-matched F1 ({subtype_f1:.4f}) is higher than best mismatched F1 ({mismatched_f1:.4f}); this supports subtype-specific signal.")
+        elif matched_f1 > mismatched_f1:
+            lines.append(f"- Best type/subtype-matched F1 ({matched_f1:.4f}) is higher than best mismatched F1 ({mismatched_f1:.4f}), but subtype-only F1 ({subtype_f1:.4f}) is not; this supports broad type signal more than subtype signal.")
         else:
-            lines.append(f"- Best matched F1 ({matched_f1:.4f}) does not beat best mismatched F1 ({mismatched_f1:.4f}); subtype-specific experts are not established yet.")
+            lines.append(f"- Best type/subtype-matched F1 ({matched_f1:.4f}) does not beat best mismatched F1 ({mismatched_f1:.4f}); subtype-specific experts are not established yet.")
     else:
         lines.append("- Eval has not been run yet, so no matched-vs-mismatched conclusion is available.")
     lines.append("")
