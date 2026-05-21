@@ -54,7 +54,9 @@ python scripts/write_subtype_mask_data_quality_notes.py \
   --val-jsonl "$VAL_JSONL" \
   --output "$QUALITY_NOTES"
 
-if [[ "$RUN_EVAL_NORM" == "true" || "$RUN_EVAL_NORM" == "1" || "$RUN_EVAL_NORM" == "yes" ]]; then
+case "$RUN_EVAL_NORM" in
+true|1|yes|on)
+  echo "[subtype-mask] eval gate accepted"
   COMMON_EVAL_ARGS=(
     --input-jsonl "$VAL_JSONL"
     --vector-file "$VECTORS"
@@ -127,9 +129,11 @@ if [[ "$RUN_EVAL_NORM" == "true" || "$RUN_EVAL_NORM" == "1" || "$RUN_EVAL_NORM" 
   python scripts/summarize_subtype_mask_eval.py \
     --summary-csv "$EVAL_ROOT/summary.csv" \
     --output "$EVAL_ROOT/MASK_EVAL_REPORT.md"
-else
+  ;;
+*)
   echo "[subtype-mask] RUN_EVAL=$RUN_EVAL_NORM; skipping held-out eval"
-fi
+  ;;
+esac
 
 echo "[subtype-mask] assemble final report"
 python scripts/assemble_subtype_mask_report.py \
