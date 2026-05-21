@@ -87,7 +87,7 @@ true|1|yes|on)
 
   if [[ "$FORCE_PARALLEL" == "true" && -n "$GPU_POOL" ]]; then
     IFS=',' read -r -a GPUS <<< "$GPU_POOL"
-    GROUPS=(
+    SUBTYPE_GROUPS=(
       "cat_random,attr_color"
       "cat_popular,attr_count"
       "cat_hard,rel_spatial"
@@ -97,14 +97,14 @@ true|1|yes|on)
     mkdir -p "$PART_ROOT"
     echo "[subtype-mask] parallel eval on GPU pool: $GPU_POOL"
     pids=()
-    for idx in "${!GROUPS[@]}"; do
+    for idx in "${!SUBTYPE_GROUPS[@]}"; do
       gpu="${GPUS[$((idx % ${#GPUS[@]}))]}"
       part_dir="$PART_ROOT/part$idx"
       mkdir -p "$part_dir"
-      echo "[subtype-mask] launch part$idx GPU=$gpu subtypes=${GROUPS[$idx]}"
+      echo "[subtype-mask] launch part$idx GPU=$gpu subtypes=${SUBTYPE_GROUPS[$idx]}"
       CUDA_VISIBLE_DEVICES="$gpu" python scripts/eval_subtype_mask_steering.py \
         "${COMMON_EVAL_ARGS[@]}" \
-        --subtypes "${GROUPS[$idx]}" \
+        --subtypes "${SUBTYPE_GROUPS[$idx]}" \
         --device cuda:0 \
         --output-dir "$part_dir" \
         > "$part_dir/log.txt" 2>&1 &
