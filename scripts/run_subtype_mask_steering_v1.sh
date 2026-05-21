@@ -27,8 +27,11 @@ SKIP_EXISTING=${SKIP_EXISTING:-true}
 LIMIT_PER_SUBTYPE=${LIMIT_PER_SUBTYPE:-0}
 ALPHAS=${ALPHAS:-0.05,0.1,0.25,0.5}
 PROGRESS_EVERY=${PROGRESS_EVERY:-20}
+RUN_EVAL_NORM=$(printf '%s' "$RUN_EVAL" | tr '[:upper:]' '[:lower:]')
 
 mkdir -p "$ROOT" "$ROOT/masks" "$EVAL_ROOT"
+
+echo "[subtype-mask] config: RUN_EVAL=$RUN_EVAL_NORM FORCE_PARALLEL=$FORCE_PARALLEL GPU_POOL=$GPU_POOL LIMIT_PER_SUBTYPE=$LIMIT_PER_SUBTYPE ALPHAS=$ALPHAS"
 
 echo "[subtype-mask] inspect inputs"
 python scripts/inspect_subtype_mask_inputs.py \
@@ -51,7 +54,7 @@ python scripts/write_subtype_mask_data_quality_notes.py \
   --val-jsonl "$VAL_JSONL" \
   --output "$QUALITY_NOTES"
 
-if [[ "$RUN_EVAL" == "true" ]]; then
+if [[ "$RUN_EVAL_NORM" == "true" || "$RUN_EVAL_NORM" == "1" || "$RUN_EVAL_NORM" == "yes" ]]; then
   COMMON_EVAL_ARGS=(
     --input-jsonl "$VAL_JSONL"
     --vector-file "$VECTORS"
@@ -125,7 +128,7 @@ if [[ "$RUN_EVAL" == "true" ]]; then
     --summary-csv "$EVAL_ROOT/summary.csv" \
     --output "$EVAL_ROOT/MASK_EVAL_REPORT.md"
 else
-  echo "[subtype-mask] RUN_EVAL=false; skipping held-out eval"
+  echo "[subtype-mask] RUN_EVAL=$RUN_EVAL_NORM; skipping held-out eval"
 fi
 
 echo "[subtype-mask] assemble final report"
