@@ -19,6 +19,7 @@ DTYPE="${DTYPE:-float16}"
 TOPK="${TOPK:-64}"
 SEED="${SEED:-42}"
 PROGRESS_EVERY="${PROGRESS_EVERY:-20}"
+MAX_SAMPLES_PER_SUBTYPE="${MAX_SAMPLES_PER_SUBTYPE:-0}"
 OVERWRITE="${OVERWRITE:-false}"
 RUN_EXTRACT="${RUN_EXTRACT:-true}"
 RUN_MERGE="${RUN_MERGE:-true}"
@@ -57,7 +58,7 @@ fi
 
 echo "[clean-v2] ROOT=${ROOT}"
 echo "[clean-v2] RUN_EXTRACT=${RUN_EXTRACT} RUN_MERGE=${RUN_MERGE} RUN_BUILD=${RUN_BUILD}"
-echo "[clean-v2] GPU_POOL=${GPU_POOL} NUM_SHARDS=${NUM_SHARDS} DTYPE=${DTYPE}"
+echo "[clean-v2] GPU_POOL=${GPU_POOL} NUM_SHARDS=${NUM_SHARDS} DTYPE=${DTYPE} MAX_SAMPLES_PER_SUBTYPE=${MAX_SAMPLES_PER_SUBTYPE}"
 
 if [[ "${RUN_EXTRACT}" == "true" ]]; then
   pids=()
@@ -78,6 +79,7 @@ if [[ "${RUN_EXTRACT}" == "true" ]]; then
       --conv-mode "${CONV_MODE}" \
       --device cuda:0 \
       --dtype "${DTYPE}" \
+      --max-samples-per-subtype "${MAX_SAMPLES_PER_SUBTYPE}" \
       --num-shards "${NUM_SHARDS}" \
       --shard-index "${shard}" \
       --progress-every "${PROGRESS_EVERY}" \
