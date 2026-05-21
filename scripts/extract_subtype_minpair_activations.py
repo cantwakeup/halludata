@@ -226,6 +226,7 @@ def metadata_for_row(index: int, row: Mapping[str, Any], branch_meta: Mapping[st
         "expert_type": str(row.get("expert_type", "")),
         "hallucination_type": str(row.get("hallucination_type", row.get("expert_type", ""))),
         "subtype": str(row.get("subtype", "")),
+        "condition_key": list(row.get("condition_key", [])) if isinstance(row.get("condition_key", []), list) else row.get("condition_key", []),
         "image_id": str(row.get("image_id", "")),
         "image_path": str(row.get("image_path", "")),
         "question": str(row.get("question", "")),
