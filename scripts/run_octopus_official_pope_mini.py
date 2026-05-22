@@ -76,6 +76,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--progress-every", type=int, default=20)
     parser.add_argument("--prompt-suffix", default=OCTOPUS_SUFFIX)
+    parser.add_argument("--decode", choices=["both", "default_sampling", "deterministic"], default="both")
     parser.add_argument(
         "--compat-new-transformers",
         action=argparse.BooleanOptionalAction,
@@ -394,6 +395,7 @@ def generate_one(
     prompt_len = int(input_ids.shape[1])
 
     generate_kwargs = {
+        "attention_mask": torch.ones_like(input_ids),
         "images": image_tensor,
         "do_sample": bool(decode.do_sample),
         "temperature": float(decode.temperature),
@@ -412,7 +414,6 @@ def generate_one(
             if not any(token in message for token in ("cache_position", "attention_mask", "model_kwargs", "new_ones")):
                 raise
             maybe_apply_new_transformers_compat(model)
-            generate_kwargs["attention_mask"] = torch.ones_like(input_ids)
             output_ids = model.generate(input_ids, **generate_kwargs)
 
     raw_output, raw_full_output, output_token_len = decode_suffix(tokenizer, output_ids, prompt_len)
@@ -680,7 +681,13 @@ def main() -> int:
         hf_rows = collect_hf_rows(Path(args.hf_raw), int(args.limit))
         official_rows_by_decode: dict[str, list[dict[str, Any]]] = {}
         prompt_examples: list[dict[str, Any]] = []
+        selected_decodes = [
+            d for d in DECODE_CONFIGS
+            if str(args.decode) == "both" or d.name == str(args.decode)
+        ]
         for decode in DECODE_CONFIGS:
+            if decode not in selected_decodes:
+                continue
             rows, examples = run_official_decode(
                 decode=decode,
                 samples=samples,

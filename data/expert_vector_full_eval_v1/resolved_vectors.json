@@ -1,0 +1,85 @@
+{
+  "runtime_vector_file": "/home/huiwei/sy/halludata/data/expert_vector_full_eval_v1/vectors/expert_vectors_runtime.pt",
+  "layers": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31
+  ],
+  "selected": {
+    "global": {
+      "path": "/home/huiwei/sy/halludata/data/clean_type_minpair_v2/vectors/condition_vectors.pt",
+      "key": "g_all_clean",
+      "source": "clean_type_minpair_v2:g_all_clean",
+      "shape": [
+        32,
+        32,
+        128
+      ],
+      "norm": 0.7395444512367249
+    },
+    "cat": {
+      "path": "/home/huiwei/sy/halludata/data/subtype_minpair_v1/vectors/subtype_vectors.pt",
+      "key": "g_cat_clean",
+      "source": "subtype_minpair_v1:g_cat_clean",
+      "shape": [
+        32,
+        32,
+        128
+      ],
+      "norm": 0.8230783343315125
+    },
+    "attr": {
+      "path": "/home/huiwei/sy/halludata/data/clean_type_minpair_v2/vectors/condition_vectors.pt",
+      "key": "g_attr_clean",
+      "source": "clean_type_minpair_v2:g_attr_clean",
+      "shape": [
+        32,
+        32,
+        128
+      ],
+      "norm": 0.7583270072937012
+    },
+    "rel": {
+      "path": "/home/huiwei/sy/halludata/data/clean_type_minpair_v2/vectors/condition_vectors.pt",
+      "key": "g_rel_clean",
+      "source": "clean_type_minpair_v2:g_rel_clean",
+      "shape": [
+        32,
+        32,
+        128
+      ],
+      "norm": 0.7740428447723389
+    }
+  },
+  "inventory_count": 197,
+  "load_errors": []
+}
