@@ -33,3 +33,13 @@ The most stable finding is not that three clean experts are already solved. The 
 - Relation steering requires subtype-specific treatment such as contact, interaction, and position.
 - Raw type vectors are strongly affected by a shared factualization component.
 - Future work should move toward subtype-specific vector banks, causal head discovery, and token-level routing.
+
+## Latest Diagnostic Pass
+
+The [typed FAS next-stage report](experiments/typed_fas_next/FINAL_REPORT.md) records the July 2026 follow-up to the coarse `cat` / `attr` / `rel` expert-vector experiment.
+
+- The large POPE, AMBER, and GQA evidence does not support raw coarse vectors as clean routed experts: matched-vector selectivity is absent or negligible.
+- Cached-tensor contrast vectors and discriminative head masks substantially reduce representation overlap, but this is a screening result rather than a benchmark success claim.
+- The next required evidence is a controlled development-set sweep reporting accuracy, matched-vs-mismatched selectivity, and yes-rate before attempting routing or a larger benchmark.
+
+The diagnostic runner and compact reports are versioned. Its generated vector bundle, exhaustive head maps, and full JSON diagnostic are intentionally local artifacts; they can be regenerated from the cached tensors with `experiments/typed_fas_next/run_vector_only_diagnostics.py`.

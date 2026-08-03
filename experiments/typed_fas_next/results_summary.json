@@ -1,0 +1,47 @@
+{
+  "date": "2026-07-08",
+  "repo": "/home/huiwei/sy/halludata",
+  "conclusion": "This pass moves the project forward at representation-diagnostic level, but not yet at benchmark/routing level. Raw vectors should not be scaled again; contrast and discriminative masks are the best next dev-benchmark candidates.",
+  "experiments": [
+    {
+      "name": "repo_audit",
+      "status": "completed",
+      "output": "experiments/typed_fas_next/00_repo_audit.md"
+    },
+    {
+      "name": "existing_raw_large_reconstruction",
+      "status": "completed",
+      "max_selectivity_margin": 0.001,
+      "output": "experiments/typed_fas_next/01_existing_results_summary.md"
+    },
+    {
+      "name": "vector_only_contrast_and_masks",
+      "status": "completed",
+      "best_moderate_norm_variant": "headnorm_contrast_l0p75",
+      "best_moderate_norm_mean_abs_pairwise_cosine": 0.2348,
+      "best_top64_triple_jaccard": 0.0,
+      "output": "experiments/typed_fas_next/02_vector_only_experiments.md",
+      "artifacts": [
+        "experiments/typed_fas_next/vector_only/VECTOR_ONLY_DIAGNOSTICS.md",
+        "experiments/typed_fas_next/vector_only/vector_only_variants.pt",
+        "experiments/typed_fas_next/vector_only/head_maps"
+      ]
+    },
+    {
+      "name": "anchor_cancellation",
+      "status": "not_run",
+      "reason": "anchor text rows can be built from cached facts, but anchor activations are not cached and GPUs were occupied"
+    },
+    {
+      "name": "correct_wrong_minpair",
+      "status": "audited_existing_artifacts",
+      "subtype_mean_abs_cosine": 0.0880,
+      "reason": "clean minimal-pair activations/vectors already exist"
+    },
+    {
+      "name": "subtype_and_routing",
+      "status": "not_run",
+      "reason": "routing should wait for positive dev selectivity"
+    }
+  ]
+}

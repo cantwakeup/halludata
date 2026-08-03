@@ -1,0 +1,14 @@
+vector,kind,flat_norm,best_coarse,best_coarse_cosine
+g_all_clean,coarse,0.7395444512367249,,nan
+g_attr_clean,coarse,0.7583270072937012,,nan
+g_rel_clean,coarse,0.7740428447723389,,nan
+s_attr_color_clean_clean,subtype,0.023405320942401886,g_rel_clean,0.011465733394757597
+s_attr_count_clean_clean,subtype,0.19095279276371002,g_attr_clean,0.06413865696901193
+s_attr_state_clean_clean,subtype,0.05569029971957207,g_rel_clean,-0.003961562003164537
+s_attr_material_clean_clean,subtype,0.03770768642425537,g_attr_clean,0.027592099288332565
+s_attr_shape_clean_clean,subtype,0.0656810775399208,g_rel_clean,0.01699647364853725
+s_attr_action_single_clean_clean,subtype,0.17215250432491302,g_rel_clean,-0.042533566592507566
+s_rel_left_right_clean_clean,subtype,0.0301654152572155,g_all_clean,0.11110754984981891
+s_rel_above_below_clean_clean,subtype,0.03171169385313988,g_attr_clean,-0.08559258129551547
+s_rel_holding_wearing_clean_clean,subtype,0.27769434452056885,g_rel_clean,-0.00503507570605489
+s_rel_sitting_riding_clean_clean,subtype,0.29184073209762573,g_rel_clean,-0.014842451687885524

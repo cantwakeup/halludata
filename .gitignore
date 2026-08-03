@@ -62,3 +62,10 @@ data/external/
 !data/mock/images/*.jpg
 !data/mock/panoptic/
 !data/mock/panoptic/*.png
+
+# Reproducible typed-FAS diagnostic artifacts. Keep the runner and compact
+# reports under experiments/typed_fas_next/ in Git; retain bulk outputs locally.
+experiments/typed_fas_next/vector_only/head_maps/
+experiments/typed_fas_next/vector_only/head_map_files.csv
+experiments/typed_fas_next/vector_only/vector_only_diagnostics.json
+experiments/typed_fas_next/vector_only/vector_only_variants.pt

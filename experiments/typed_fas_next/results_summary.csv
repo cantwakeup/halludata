@@ -1,0 +1,8 @@
+experiment,status,primary_metric,value,interpretation,next_step
+repo_audit,completed,current_raw_vector_shape,"[32,32,128]","runtime vectors are ready for vector-only transformations","use cached tensors before GPU jobs"
+existing_raw_large,completed,max_selectivity_margin,0.001,"raw vectors do not establish clean type experts","do not rerun large raw matrix"
+vector_only_contrast,completed,best_mean_abs_pairwise_cosine,0.2348,"headnorm_contrast_l0p75 gives strongest moderate-norm decoupling","run small dev benchmark when GPUs are free"
+vector_only_masks,completed,best_top64_triple_jaccard,0.0,"discriminative masks can remove shared topK overlap","test specificity/contrast/ratio masks on dev"
+anchor_cancellation,not_run,missing_artifact,"anchor activations","facts can build anchors but activations are not cached","build anchor rows and run text-only activation extraction"
+correct_wrong_minpair,audited,subtype_mean_abs_cosine,0.0880,"clean minpair vectors are representationally separated but benchmark selectivity is limited","target attr_count/attr_shape and relation bias checks"
+subtype_routing,not_run,prerequisite,"positive dev selectivity","routing over weak experts would not answer the research question","run after dev selectivity is positive"
